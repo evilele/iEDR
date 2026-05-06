@@ -18,12 +18,24 @@
     <ClCompile Include="iEDR.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="etwreader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="etwparser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="iEDR.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="cxxopts.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="etwreader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="etwparser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

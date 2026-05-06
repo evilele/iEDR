@@ -1,9 +1,41 @@
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+
+#include <iostream>
+#include <vector>
+
 #include "iEDR.h"
 #include "cxxopts.h"
-#include <iostream>
+#include "etwreader.h"
+#include "etwparser.h"
+
+bool g_trace_started = false;
+
+bool is_admin() {
+    BOOL is_admin = FALSE;
+    PSID admin_group = nullptr;
+    SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+    if (AllocateAndInitializeSid(
+        &NtAuthority, 2,
+        SECURITY_BUILTIN_DOMAIN_RID,
+        DOMAIN_ALIAS_RID_ADMINS,
+        0, 0, 0, 0, 0, 0,
+        &admin_group)) {
+        CheckTokenMembership(nullptr, admin_group, &is_admin);
+        FreeSid(admin_group);
+    }
+    return is_admin == TRUE;
+}
 
 int main(int argc, char* argv[]) {
     std::cout << BANNER;
+
+    if (!is_admin()) {
+        std::cerr << "[!] This program must be run as administrator.\n";
+        return 1;
+	}
 
     cxxopts::Options options("iEDR");
     options.set_width(120);
@@ -45,7 +77,21 @@ int main(int argc, char* argv[]) {
         std::cout << "[+] Monitoring path for any attack executables: " << attackPathFilter << "\n";
 	}
 
-    // todo define and start kernel-api-audit and antimalware-engine etw
+    // start ETW traces for monitoring
+    std::vector<HANDLE> threads;
+    if (!start_etw_traces(threads)) {
+        std::cerr << "[!] EDRi: Failed to start ETW traces.\n";
+        return 1;
+    }
+
+    // temporary solution, wait for g_trace_started == true and exit again
+    while (!g_trace_started) {
+        std::cout << "[+] Waiting for ETW traces to start...\n";
+        Sleep(5000);
+    }
+    std::cout << "[+] ETW traces started, stopping again...\n";
+	stop_etw_traces();
+	std::cout << "[+] ETW traces stopped, exiting...\n";
 
     // todo define etw listeners 
 
