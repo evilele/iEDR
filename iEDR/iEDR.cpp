@@ -10,8 +10,13 @@
 #include "cxxopts.h"
 #include "etwreader.h"
 #include "etwparser.h"
+#include "utils.h"
 
 bool g_trace_started = false;
+bool g_debug = false;
+std::string g_attack_path;
+int g_attack_pid = 0;
+verbosity_level g_level = MINIMAL;
 
 bool is_admin() {
     BOOL is_admin = FALSE;
@@ -43,8 +48,9 @@ int main(int argc, char* argv[]) {
     // PARSER OPTIONS
     options.add_options()
         ("h,help", "Print usage")
-        ("a,attackExe", "The exact file path of the attack to be stored and monitored", cxxopts::value<std::string>())
-        ("g,genericPath", "A generic folder path to monitor any new executable in it", cxxopts::value<std::string>());
+        ("d,debug", "Enable debug output", cxxopts::value<bool>()->default_value("false"))
+        ("a,attack", "The file path of the attack to trace", cxxopts::value<std::string>())
+        ("l,level", "The verbosity level, between 0 (minimal) and 3 (verbose)", cxxopts::value<int>()->default_value("0"));
 
     cxxopts::ParseResult result;
     try {
@@ -61,21 +67,42 @@ int main(int argc, char* argv[]) {
         std::cout << options.help() << "\n";
         return 0;
     }
-    if (result.count("attackExe") + result.count("genericPath") != 1) {
-        std::cerr << "[!] Either --attackExe OR --genericPath options is required.\n";
+    if (result.count("attack") == 0) {
+        std::cerr << "[!] Attack path to track is required.\n";
         std::cout << options.help() << "\n";
         return 1;
+    }
+    else {
+		g_attack_path = result["attack"].as<std::string>();
+        if (g_attack_path.empty()) {
+            std::cerr << "[!] Attack path to track cannot be empty.\n";
+            return 1;
+		}
+        if (g_attack_path[g_attack_path.length() - 1] == ('\\')) {
+			std::cout << "[+] Tracking EDR actions against all files in directory: " << g_attack_path << "\n";
+        }
+        else {
+            std::cout << "[+] Tracking EDR actions against attack: " << g_attack_path << "\n";
+        }
+    }
+
+    if (result.count("debug")) {
+        g_debug = result["debug"].as<bool>();
+        std::cout << "[+] Debug output enabled.\n";
 	}
 
-    std::string attackPathFilter = "";
-    if (result.count("attackExe")) {
-        attackPathFilter = result["attackExe"].as<std::string>();
-        std::cout << "[+] Monitoring path for a given attack executable: " << attackPathFilter << "\n";
+    if (result.count("level")) {
+        int level = result["level"].as<int>();
+        if (level < 0 || level > 2) {
+            std::cerr << "[!] Invalid verbosity level. Please provide a value between 0 and 2.\n";
+            return 1;
+		}
+        g_level = static_cast<verbosity_level>(level);
     }
-    if (result.count("genericPath")) {
-        attackPathFilter = result["genericPath"].as<std::string>();
-        std::cout << "[+] Monitoring path for any attack executables: " << attackPathFilter << "\n";
-	}
+    else {
+        g_level = MINIMAL;
+    }
+    std::cout << "[+] Verbosity level set to: " << g_level << "\n";
 
     // start ETW traces for monitoring
     std::vector<HANDLE> threads;
@@ -86,7 +113,9 @@ int main(int argc, char* argv[]) {
 
     // temporary solution, wait for g_trace_started == true and exit again
     while (!g_trace_started) {
-        std::cout << "[+] Waiting for ETW traces to start...\n";
+        if (g_debug) {
+            std::cout << "[+] Waiting for ETW traces to start...\n";
+		}
         Sleep(5000);
     }
     std::cout << "[+] ETW traces started, stopping again...\n";
