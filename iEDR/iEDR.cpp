@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     else {
-		g_attack_path = result["attack"].as<std::wstring>();
+		g_attack_path = string_to_wstring(result["attack"].as<std::string>());
         if (g_attack_path.empty()) {
             std::cerr << "[!] Attack path to track cannot be empty.\n";
             return 1;
@@ -95,14 +95,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (result.count("debug")) {
+    if (result.count("verbose")) {
+        g_dev_debug = true;
+        g_debug = true; // also set debug to true, as verbose implies debug
+        std::cout << "[+] Development debug (and normal debug) output enabled.\n";
+    }
+    else if (result.count("debug")) {
         g_debug = true;
         std::cout << "[+] Debug output enabled.\n";
 	}
-    if (result.count("verbose")) {
-        g_dev_debug = true;
-        std::cout << "[+] Development debug output enabled.\n";
-    }
 
     if (result.count("level")) {
         int level = result["level"].as<int>();
@@ -125,21 +126,23 @@ int main(int argc, char* argv[]) {
     }
 
     // temporary solution, wait for g_trace_started == true and exit again
+    int wait_counter = 0;
     while (!g_trace_started) {
-        if (g_debug) {
+        if (g_debug && wait_counter % 50 == 0) {
             std::cout << "[+] Waiting for ETW traces to start...\n";
 		}
-        Sleep(5000);
+        Sleep(100);
+		wait_counter++;
     }
-    std::cout << "[+] ETW traces started, stopping again...\n";
+
+	// wait until user presses enter to stop traces and exit
+	std::wcout << L"[+] Traces ready, please store your attack file at " << g_attack_path << L" and execute it to see EDR detections in action.\n";
+    // todo nicer print?
+
+    std::cout << "[+] Press Enter to stop ETW traces and exit...\n";
+	std::cin.get();
 	stop_etw_traces();
 	std::cout << "[+] ETW traces stopped, exiting...\n";
-
-    // todo define etw listeners 
-
-    // todo print startup complete
-    
-    // todo define filters and only print relevant events
 
     // todo get any events from MDE event log
 

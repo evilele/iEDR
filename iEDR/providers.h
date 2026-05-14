@@ -8,12 +8,11 @@
 
 
 struct FilterValue {
-    enum Type { INT_FILTER, WSTR_FILTER, INT_PTR_FILTER, WSTR_PTR_FILTER } type;
+    enum Type { INT_FILTER, INT_PTR_FILTER, WSTR_PTR_FILTER } type;
 
     union {
         int i_val;
         const int* i_ptr;
-		const std::wstring s_val;
         const std::wstring* s_ptr;
     };
 
@@ -21,21 +20,14 @@ struct FilterValue {
     FilterValue(int v) : type(INT_FILTER), i_val(v) {}
     FilterValue(const int* v) : type(INT_PTR_FILTER), i_ptr(v) {}
     FilterValue(const std::wstring* v) : type(WSTR_PTR_FILTER), s_ptr(v) {}
-    FilterValue(const std::wstring& v) : type(WSTR_PTR_FILTER), s_ptr(&v) {}
 
     int get_int() const {
         return (type == INT_PTR_FILTER) ? *i_ptr : i_val;
     }
 
     std::wstring get_str() const {
-        return (type == WSTR_PTR_FILTER && s_ptr) ? *s_ptr : s_val;
+        return (type == WSTR_PTR_FILTER && s_ptr) ? *s_ptr : L"";
     }
-
-    ~FilterValue() {
-        if (type == WSTR_FILTER) {
-            s_val.~basic_string();
-        }
-	}
 };
 
 struct operation {
@@ -58,11 +50,11 @@ struct event {
 };
 
 struct events {
-    const std::map<int, event> minimal_ids;
-    const std::map<int, event> relevant_ids;
-    const std::map<int, event> all_ids;
+    const std::vector<event> minimal_ids;
+    const std::vector<event> relevant_ids;
+    const std::vector<event> all_ids;
 
-    const std::map<int, event>& get(verbosity_level lvl) const {
+    const std::vector<event>& get(verbosity_level lvl) const {
         switch (lvl) {
         case MINIMAL: return minimal_ids;
         case VERBOSE: return all_ids;
