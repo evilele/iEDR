@@ -3,20 +3,25 @@
 #endif
 #include <windows.h>
 
+#include "cxxopts.h"
+
 #include <iostream>
 #include <vector>
 
 #include "iEDR.h"
-#include "cxxopts.h"
 #include "etwreader.h"
-#include "etwparser.h"
 #include "utils.h"
 
 bool g_trace_started = false;
 bool g_debug = false;
-std::string g_attack_path;
-int g_attack_pid = 0;
+bool g_dev_debug = false;
+
 verbosity_level g_level = MINIMAL;
+
+std::wstring g_attack_path;
+int g_attack_pid = 0;
+int g_attack_main_tid = 0;
+
 
 bool is_admin() {
     BOOL is_admin = FALSE;
@@ -49,6 +54,7 @@ int main(int argc, char* argv[]) {
     options.add_options()
         ("h,help", "Print usage")
         ("d,debug", "Enable debug output", cxxopts::value<bool>()->default_value("false"))
+		("v,verbose", "Enable development debug output", cxxopts::value<bool>()->default_value("false"))
         ("a,attack", "The file path of the attack to trace", cxxopts::value<std::string>())
         ("l,level", "The verbosity level, between 0 (minimal) and 3 (verbose)", cxxopts::value<int>()->default_value("0"));
 
@@ -73,23 +79,30 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     else {
-		g_attack_path = result["attack"].as<std::string>();
+		g_attack_path = result["attack"].as<std::wstring>();
         if (g_attack_path.empty()) {
             std::cerr << "[!] Attack path to track cannot be empty.\n";
             return 1;
 		}
-        if (g_attack_path[g_attack_path.length() - 1] == ('\\')) {
-			std::cout << "[+] Tracking EDR actions against all files in directory: " << g_attack_path << "\n";
+        if (g_attack_path[g_attack_path.length() - 1] == (L'\\')) {
+			// todo 
+            // once attack detected, set g_attack_path to the actual file path, not the directory
+            // when done, reset g_attack_path to folder path
+			std::wcout << L"[+] Tracking EDR actions against all files in directory: " << g_attack_path << L"\n";
         }
         else {
-            std::cout << "[+] Tracking EDR actions against attack: " << g_attack_path << "\n";
+            std::wcout << L"[+] Tracking EDR actions against attack: " << g_attack_path << L"\n";
         }
     }
 
     if (result.count("debug")) {
-        g_debug = result["debug"].as<bool>();
+        g_debug = true;
         std::cout << "[+] Debug output enabled.\n";
 	}
+    if (result.count("verbose")) {
+        g_dev_debug = true;
+        std::cout << "[+] Development debug output enabled.\n";
+    }
 
     if (result.count("level")) {
         int level = result["level"].as<int>();

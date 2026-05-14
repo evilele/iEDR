@@ -129,12 +129,14 @@
     <ClCompile Include="etwparser.cpp" />
     <ClCompile Include="etwreader.cpp" />
     <ClCompile Include="iEDR.cpp" />
+    <ClCompile Include="providers.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cxxopts.h" />
     <ClInclude Include="etwparser.h" />
     <ClInclude Include="etwreader.h" />
+    <ClInclude Include="providers.h" />
     <ClInclude Include="iEDR.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>

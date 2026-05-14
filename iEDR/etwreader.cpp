@@ -3,42 +3,45 @@
 
 #include "etwreader.h"
 #include "etwparser.h"
+#include "providers.h"
 #include "utils.h"
 
 krabs::user_trace trace_etw(L"iEDR");
 
 
-void add_trace(const provider& prov) {
-    krabs::provider<> provider(string_to_wstring(prov.provider_name));
-	const std::vector<unsigned short>& event_ids = prov.event_ids.get(g_level);
+void add_trace(const provider& p) {
+    krabs::provider<> provider(p.provider_name);
+	const std::map<int, event>& events = p.events_to_track.get(g_level);
 
-    krabs::event_filter filter(event_ids);
-    //if (with_stack_trace) { provider.trace_flags(provider.trace_flags() | EVENT_ENABLE_PROPERTY_STACK_TRACE); }
-    filter.add_on_event_callback(event_callback);
-    provider.add_filter(filter);
-    trace_etw.enable(provider);
+    if (events.size() > 0) {
 
-    if (g_debug && event_ids.size() > 0) {
-        std::cout << "[+] ETW: Enabling " << prov.provider_name << ": ";
-        for (auto id : event_ids) {
-            std::cout << id << " ";
+        // extract just event ids
+        std::vector<unsigned short> event_ids;
+        event_ids.reserve(events.size());
+        for (auto const& pair : events) {
+            event_ids.push_back(pair.first);
         }
-        std::cout << "\n";
+
+        krabs::event_filter filter(event_ids);
+        filter.add_on_event_callback(event_callback);
+        provider.add_filter(filter);
+        trace_etw.enable(provider);
+
+        if (g_debug) {
+            std::wcout << L"[+] ETW: Enabling " << p.provider_name << L": ";
+            for (auto id : event_ids) {
+                std::cout << id << " ";
+            }
+            std::cout << "\n";
+        }
     }
 }
 
 DWORD WINAPI t_start_traces(LPVOID param) {
     try {
-        // https://github.com/jdu2600/Etw-SyscallMonitor/tree/main/src/ETW
-
-        // KERNEL //
-		add_trace(kernel_process_provider);
-		add_trace(kernel_file_provider);
-		add_trace(kernel_network_provider);
-		add_trace(kernel_api_provider);
-
-		// ANTIMALWARE //
-		add_trace(antimalware_provider);
+        for (auto const& p : providers_to_track) {
+            add_trace(p.second);
+        }
 
         // trace_start is blocking, hence threaded
         if (g_debug) {
