@@ -40,7 +40,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
         std::wstring provider_name = schema.provider_name();
         unsigned short id = schema.event_id();
         if (g_debug) {
-            std::wcout << L"[+] ETW Event: " << provider_name << L" - " << schema.event_id() << L"\n";
+            std::wcout << L"[+] ETW Event: " << provider_name << L" -  EventID: " << schema.event_id() << L"\n";
         }
 
         // 1.check if this provider is interesting
@@ -68,27 +68,35 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                         case TDH_INTYPE_UINT16: {
                             uint16_t val = parser.parse<uint16_t>(f.field_name);
                             current_match = matches((int)val, f);
+                            break;
                         }
                         case TDH_INTYPE_UINT32:
                         case TDH_INTYPE_HEXINT32: {
                             uint32_t val = parser.parse<uint32_t>(f.field_name);
                             current_match = matches((int)val, f);
+                            break;
                         }
                         case TDH_INTYPE_UNICODESTRING: {
                             std::wstring val = parser.parse<std::wstring>(f.field_name);
                             current_match = matches(val, f);
+                            break;
                         }
                         case TDH_INTYPE_ANSISTRING: {
                             std::string val = parser.parse<std::string>(f.field_name);
                             current_match = matches(std::wstring(val.begin(), val.end()), f);
+                            break;
                         }
                         case TDH_INTYPE_POINTER:
                         case TDH_INTYPE_SIZET: {
                             uint64_t val = parser.parse<uint64_t>(f.field_name);
                             current_match = matches((int)val, f);
+                            break;
                         }
                         default:
                             current_match = false;
+							std::wcout << L"[!] Unsupported TDH field type " << f.tdh_field_type << L" for field '" 
+                                << f.field_name << L"' in EventID " << provider_name << L" - " << schema.event_id() << L"\n";
+                            break;
                         }
                     }
                     catch (...) {
@@ -116,7 +124,26 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     }
                 }
             }
-		}		
+		}
+        // check if the event marks the start of the attack
+        /*
+        if (g_attack_pid == 0 && provider_name == kernel_process_provider_name && id == 1) { // ProcessStart event
+            try {
+                std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
+                if (image_name == g_attack_path) {
+                    g_attack_started = true;
+                    if (g_debug) {
+                        std::wcout << L"[+] Attack started: ProcessStart event with ImageName " << image_name << L"\n";
+                    }
+                }
+            }
+            catch (...) {
+                if (g_dev_debug) {
+                    std::wcerr << L"[!] Error parsing ImageName for ProcessStart event\n";
+                }
+            }
+		}
+        */
     }
     catch (const std::exception& e) {
         if (g_dev_debug) {
@@ -129,11 +156,11 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 // hand over schema for parsing
 void event_callback(const EVENT_RECORD& record, const krabs::trace_context& trace_context) {
     if (g_dev_debug) {
-        std::cout << "----------------------- Parsing event " << record.EventHeader.EventDescriptor.Id << " ---------\n";
+        std::cout << "----------------------- Parsing EventID: " << record.EventHeader.EventDescriptor.Id << " ---------\n";
     }
     g_trace_started = true;
     parse_etw_event(record, krabs::schema(record, trace_context.schema_locator));
     if (g_dev_debug) {
-		std::cout << "----------------------- OK " << record.EventHeader.EventDescriptor.Id << " ---------\n";
+		std::cout << "----------------------- OK EventID: " << record.EventHeader.EventDescriptor.Id << " ---------\n";
     }
 }

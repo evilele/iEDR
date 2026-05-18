@@ -7,6 +7,12 @@
 #include "utils.h"
 
 
+const std::wstring kernel_process_provider_name = L"Microsoft-Windows-Kernel-Process";
+const std::wstring kernel_file_provider_name = L"Microsoft-Windows-Kernel-File";
+const std::wstring kernel_network_provider_name = L"Microsoft-Windows-Kernel-Network";
+const std::wstring kernel_api_audit_provider_name = L"Microsoft-Windows-Kernel-Audit-API-Calls";
+const std::wstring antimalware_provider_name = L"Microsoft-Antimalware-Engine";
+
 struct FilterValue {
     enum Type { INT_FILTER, INT_PTR_FILTER, WSTR_PTR_FILTER } type;
 

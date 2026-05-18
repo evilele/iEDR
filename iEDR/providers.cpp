@@ -25,7 +25,7 @@ event kp5 = { 5, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQ
 event kp6 = { 6, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "" };
 event kp11 = { 11,{ {L"FrozenProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, "Attack process frozen" };
 provider kernel_process_provider = {
-    L"Microsoft-Windows-Kernel-Process",
+    kernel_process_provider_name,
     {
         { kp1, kp2, kp11 },
         { kp1, kp2, kp3, kp4, kp5, kp6, kp11 },
@@ -40,7 +40,7 @@ provider kernel_process_provider = {
 event kf10 = { 10, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Attack file (name) created" };
 event kf30 = { 30, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Attack file created" };
 provider kernel_file_provider = {
-    L"Microsoft-Windows-Kernel-File",
+    kernel_file_provider_name,
     {
         { kf30 },
         { kf10, kf30 },
@@ -68,7 +68,7 @@ event kn43 = { 43, {  { } } };
 event kn58 = { 58, {  { } } };
 event kn59 = { 59, {  { } } };
 provider kernel_network_provider = {
-    L"Microsoft-Windows-Kernel-Network",
+    kernel_network_provider_name,
     {
         { },
         { },
@@ -91,7 +91,7 @@ event ka4 = { 4, { { } } };
 event ka5 = { 5, { {L"TargetProcessId", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} , {L"DesiredAccess", TDH_INTYPE_UINT32, {operation::Type::CONTAINS_FLAG}, 0x400} } };
 event ka6 = { 6, { {L"ThreadId", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_main_tid} } };
 provider kernel_api_provider = {
-    L"Microsoft-Windows-Kernel-Audit-API-Calls",
+    kernel_api_audit_provider_name,
     {
         { ka5 },
         { ka5 },
@@ -148,7 +148,7 @@ event am111 = { 111, {  } };
 event am112 = { 112, {  } };
 
 provider antimalware_provider = {
-    L"Microsoft-Antimalware-Engine",
+    antimalware_provider_name,
     {
         { am1path, am1proc, am5, am30, am32, am43 },
         { am1path, am1proc, am5, am30, am32, am36, am43, am44, am46 },
