@@ -7,6 +7,11 @@
 #include "providers.h"
 #include "utils.h"
 
+const std::wstring c_get_hashes = L"GetHashes";
+const std::wstring c_build_report = L"spynet_report::build_report";
+
+// todo define global start and stop event(s) of recordings?
+
 // the providers to track
 /* https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Windows-Kernel-Process.tsv
     1 ProcessStart
@@ -37,8 +42,9 @@ provider kernel_process_provider = {
     10 NameCreate
     30 CreateNewFile
 */
-event kf10 = { 10, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Attack file (name) created" };
-event kf30 = { 30, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Attack file created" };
+event kf10 = { 10, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, "Attack file (name) created" };
+event kf30 = { 30, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, "START --- Attack file created" };
+// todo: event kf30 is not matched in auto-detect mode, no dedicated start message
 provider kernel_file_provider = {
     kernel_file_provider_name,
     {
@@ -104,17 +110,18 @@ provider kernel_api_provider = {
 */
 // minimal
 event am1path = { 1, { {L"FirstResourcePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Emulation of attack file started" };
-event am1proc = { 1, { {L"FirstResourcePath", TDH_INTYPE_UINT32, {operation::Type::CONTAINS_STR}, &g_attack_pid} }, "Emulation of attack proc started" }; // todo, this should match pid:$attack_pid, but will prob break
-event am5 = { 5, { {L"opid", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, "Heuristic scan of attack file started" };
-event am7 = { 7, { {L"Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Heuristic scan of attack file failed" };
-event am30 = { 6, { {L"filepath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Heuristic scan of attack file done" };
-event am32 = { 32, { {L"filepath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Scanning loaded modules" };
-event am43 = { 43, { {L"filepath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path}, { L"data", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid } }, "Get hashes of attack file" };
+event am1proc = { 1, { {L"FirstResourcePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_pid_str} }, "Emulation of attack proc started" }; // todo, this should match pid:$attack_pid, but will prob break
+event am5 = { 5, { {L"PID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, "Heuristic scan of attack file started" };
+event am7 = { 7, { {L"Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Heuristic scan of attack file skipped" };
+event am43sig = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_get_hashes} }, "Get hashes of attack file" };
+event am43spy = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_build_report} }, "Submit scan report" };
+
 
 // relevant
-event am36 = { 36, { {L"filepath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} } };
-event am44 = { 44, {  } };
-event am46 = { 46, {  } };
+event am30 = { 30, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "UFS emulation of attack file ( ? ) started" };
+event am32 = { 32, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "UFS emulation of attack proc (loaded modules scan) started" };
+event am36 = { 36, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} } };
+event am44 = { 44, {  } }; // meta store task (stores identifiers)
 
 // all
 event am2 = { 2, {  } };
@@ -128,6 +135,7 @@ event am26 = { 26, {  } };
 event am31 = { 31, {  } };
 event am33 = { 33, {  } };
 event am38 = { 38, {  } };
+event am46 = { 46, {  } };
 event am53 = { 53, {  } };
 event am59 = { 59, {  } };
 event am60 = { 60, {  } };
@@ -150,9 +158,9 @@ event am112 = { 112, {  } };
 provider antimalware_provider = {
     antimalware_provider_name,
     {
-        { am1path, am1proc, am5, am30, am32, am43 },
-        { am1path, am1proc, am5, am30, am32, am36, am43, am44, am46 },
-        { am1path, am1proc, am2, am3, am4, am5, am6, am7, am11, am15, am16, am26, am30, am31, am32, am33, am36, am38, am43, am44, am53, am59, am60, am62, am67, am70, am71, am72, am73, am74, am95, am103, am104, am105, am109, am110, am111, am112 }
+        { am1path, am1proc, am5, am7, am43sig, am43spy },
+        { am1path, am1proc, am5, am7, am30, am32, am36, am43sig, am43spy, am44, am46 },
+        { am1path, am1proc, am2, am3, am4, am5, am6, am11, am15, am16, am26, am30, am31, am32, am33, am36, am38, am43sig, am43spy, am44, am53, am59, am60, am62, am67, am70, am71, am72, am73, am74, am95, am103, am104, am105, am109, am110, am111, am112 }
     }
 };
 
@@ -162,4 +170,8 @@ std::map<std::wstring, provider> providers_to_track = {
     {kernel_network_provider.provider_name, kernel_network_provider},
     {kernel_api_provider.provider_name, kernel_api_provider},
     {antimalware_provider.provider_name, antimalware_provider}
+};
+
+std::map < std::wstring, std::vector<int>> providers_event_ids_no_debug_output = {
+    { kernel_api_audit_provider_name, {5} }
 };

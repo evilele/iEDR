@@ -37,7 +37,7 @@ struct FilterValue {
 };
 
 struct operation {
-    enum class Type { EQUALS, CONTAINS_STR, CONTAINS_FLAG };
+    enum class Type { EQUALS, PATH_EQUALS, CONTAINS_STR, CONTAINS_FLAG };
     const Type type;
 };
 
@@ -76,3 +76,5 @@ struct provider {
 };
 
 extern std::map<std::wstring, provider> providers_to_track;
+
+extern std::map<std::wstring, std::vector<int>> providers_event_ids_no_debug_output; // to verbose

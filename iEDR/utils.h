@@ -13,9 +13,12 @@ extern bool g_dev_debug;
 extern verbosity_level g_level;
 
 extern std::wstring g_attack_path;
+extern bool g_autodetect_attack_path;
 extern int g_attack_pid;
+extern std::wstring g_attack_pid_str;
 extern int g_attack_main_tid;
 
-std::string wchar_to_string(const wchar_t* wstr);
-std::wstring string_to_wstring(const std::string& str);
-std::string wstring_to_string(const std::wstring& wstr);
+bool filepath_match(std::wstring, std::wstring);
+std::string wchar_to_string(const wchar_t*);
+std::wstring string_to_wstring(const std::string&);
+std::string wstring_to_string(const std::wstring&);

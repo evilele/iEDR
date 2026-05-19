@@ -19,7 +19,9 @@ bool g_dev_debug = false;
 verbosity_level g_level = MINIMAL;
 
 std::wstring g_attack_path;
+bool g_autodetect_attack_path = false;
 int g_attack_pid = 0;
+std::wstring g_attack_pid_str = L"";
 int g_attack_main_tid = 0;
 
 
@@ -55,7 +57,7 @@ int main(int argc, char* argv[]) {
         ("h,help", "Print usage")
         ("d,debug", "Enable debug output", cxxopts::value<bool>()->default_value("false"))
 		("v,verbose", "Enable development debug output", cxxopts::value<bool>()->default_value("false"))
-        ("a,attack", "The file path of the attack to trace", cxxopts::value<std::string>())
+        ("a,attack", "The file path of the attack to trace", cxxopts::value<std::string>()) // somehow wstring breaks cxxopts
         ("l,level", "The verbosity level, between 0 (minimal) and 3 (verbose)", cxxopts::value<int>()->default_value("0"));
 
     cxxopts::ParseResult result;
@@ -85,9 +87,7 @@ int main(int argc, char* argv[]) {
             return 1;
 		}
         if (g_attack_path[g_attack_path.length() - 1] == (L'\\')) {
-			// todo 
-            // once attack detected, set g_attack_path to the actual file path, not the directory
-            // when done, reset g_attack_path to folder path
+            g_autodetect_attack_path = true;
 			std::wcout << L"[+] Tracking EDR actions against all files in directory: " << g_attack_path << L"\n";
         }
         else {
@@ -97,10 +97,9 @@ int main(int argc, char* argv[]) {
 
     if (result.count("verbose")) {
         g_dev_debug = true;
-        g_debug = true; // also set debug to true, as verbose implies debug
-        std::cout << "[+] Development debug (and normal debug) output enabled.\n";
+        std::cout << "[+] Development debug output enabled.\n";
     }
-    else if (result.count("debug")) {
+    if (result.count("debug")) {
         g_debug = true;
         std::cout << "[+] Debug output enabled.\n";
 	}
