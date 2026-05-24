@@ -2,8 +2,11 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include "utils.h"
 #include <algorithm>
+#include <sstream>
+#include <iomanip>
+
+#include "utils.h"
 
 /* checks if the path after C:\ D:\ \\Device\HarddiskVolumeX is the same, not including the drive and trailing \ */
 bool filepath_match(std::wstring path1, std::wstring path2) {
@@ -72,4 +75,30 @@ std::string wstring_to_string(std::wstring& wide_string) {
     WideCharToMultiByte(CP_UTF8, 0, wide_string.c_str(), -1, &utf8_string[0], size_needed, nullptr, nullptr);
 
     return utf8_string;
+}
+
+/* ETW timestamp to wstr */
+std::wstring timestamp_to_wstring(LARGE_INTEGER timestamp) {
+	// keep precision of 100ns, but convert to human readable format
+
+    FILETIME ft;
+    ft.dwLowDateTime = timestamp.LowPart;
+    ft.dwHighDateTime = timestamp.HighPart;
+    SYSTEMTIME st; 
+    if (!FileTimeToSystemTime(&ft, &st)) {
+        return L"0000-00-00 00:00:00.0000000";
+    }
+
+    // calculate the remaining fractions of the 100ns intervals, 1 millisecond = 10,000 intervals of 100ns
+    uint64_t total_100ns = (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+    uint32_t fractions_100ns = static_cast<uint32_t>(total_100ns % 10000);
+
+    std::wstringstream wss;
+    wss << std::setfill(L'0')
+        << std::setw(2) << st.wHour << L":"
+        << std::setw(2) << st.wMinute << L":"
+        << std::setw(2) << st.wSecond << L"."
+        << std::setw(3) << st.wMilliseconds
+        << std::setw(4) << fractions_100ns;
+	return wss.str();
 }

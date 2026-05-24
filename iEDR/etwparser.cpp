@@ -9,7 +9,7 @@
 #include "utils.h"
 
 // do int-based fields (like ProcessId or DesiredAccess) match?
-bool matches(int actual, const filter& f) {
+bool matches(long long actual, const filter& f) {
     int expected = f.expected.get_int();
     switch (f.op.type) {
     case operation::Type::EQUALS:
@@ -27,8 +27,13 @@ bool matches(const std::wstring& actual, const filter& f) {
     switch (f.op.type) {
     case operation::Type::EQUALS:
         return actual == expected;
-	case operation::Type::PATH_EQUALS:
-        return filepath_match(actual, expected);
+    case operation::Type::PATH_EQUALS: {
+        if (g_autodetect_attack_path && g_attack_path.find_last_of(L'\\') == g_attack_path.length() - 1) { // in autodetect mode, no concrete path set yet
+			std::wstring actual_folderpath = actual.substr(0, actual.find_last_of(L'\\'));
+            return filepath_match(actual_folderpath, expected);
+        }
+		return filepath_match(actual, expected);
+    }
     case operation::Type::CONTAINS_STR:
         return actual.find(expected) != std::wstring::npos;
     default:
@@ -51,9 +56,12 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 		const provider& p = prov_it->second;
 
         int last_int = -13371337;
-		std::wstring last_wstr = L"dummypl4ceholder1234notincludedanywh3r3else";
+		std::wstring last_wstr = L"dummypl4ceholder1234";
 
-		// 2. check if this event ID is interesting, given the provider
+        // 2. parse fields
+        krabs::parser parser(schema);
+
+		// 3. check if this event ID is interesting, given the provider
         const auto& events = p.events_to_track.get(g_level);
         for (const auto& e : events) {
             if (e.id == id) {
@@ -61,11 +69,10 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     //std::wcout << L"[+] Found matching event ID " << id << L" for provider " << provider_name << L"\n";
                 }
 
-                // 3. iterate through all filters defined for this specific event
-                krabs::parser parser(schema);
+
+                // 4. iterate through all filters defined for this specific event & process filters for this specific event
                 bool all_filters_passed = true;
 
-                // 4. process filters for this specific event
                 for (const auto& f : e.filters) {
                     bool current_match = false;
                     try {
@@ -111,8 +118,18 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     }
                     catch (const std::exception& e) {
                         if (g_dev_debug) {
-                            std::wcerr << L"[!] Error parsing field '" << f.field_name << L"' for event " << provider_name << L" - " << schema.event_id() << L"\n";
-							std::cerr << "    Exception: " << e.what() << "\n";
+                            std::wcerr << L"[!] Error parsing field '" << f.field_name << L"' with type " << f.tdh_field_type 
+                                << L" for event " << provider_name << L" - " << schema.event_id() << L"\n";
+
+                            std::string e_msg(e.what());
+                            std::wstring msg(e_msg.begin(), e_msg.end());
+                            std::wcerr << L"    Exception: " << msg << L"\n";
+
+                            std::wcout << L"[***] Available Properties: ";
+                            for (const auto& prop : parser.properties()) {
+                                std::wcout << prop.name() << L"  ";
+                            }
+							std::wcout << L"\n";
                         }
                         current_match = false;
                     }
@@ -131,11 +148,11 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                             }
 
                             if (!skip_output) {
-                                std::wcout << L"[-] Filter failed: " << provider_name << L" - " << schema.event_id() << L" : (" << f.tdh_field_type << L") " << f.field_name;
+                                std::wcout << L"[-] Filter failed: " << provider_name << L" - " << schema.event_id() << L" : (type " << f.tdh_field_type << L") " << f.field_name;
                                 if (last_int != -13371337) {
                                     std::wcout << L" actual: " << last_int << L"\n";
                                 }
-                                else if (std::wcscmp(last_wstr.c_str(), L"dummypl4ceholder1234notincludedanywh3r3else") != 0) {
+                                else if (last_wstr.length() && std::wcscmp(last_wstr.c_str(), L"dummypl4ceholder1234") != 0) {
                                     std::wcout << L" actual: " << last_wstr << L"\n";
                                 }
                                 else {
@@ -149,14 +166,14 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 // 5. If all filters passed, output the event
                 if (all_filters_passed) {
                     if (g_dev_debug) { // output all in dev mode
-                        std::wcout << L"[+] Matched Event: " << provider_name << L" - " << schema.event_id() << L" : " << string_to_wstring(e.output) << L"\n";
+                        std::wcout << L"[+] Matched Event: " << provider_name << L" - " << schema.event_id() << L" : " << e.output << L"\n";
                     }
                     else {
 						if (e.output.empty()) { // output generic if no specific output defined for this event
                             std::wcout << L"[+] Matched Event: " << provider_name << L" - " << schema.event_id() << L"\n";
                         }
 						else { // output specific descriptor of event
-                            std::cout << e.output << "\n";
+                            std::wcout << timestamp_to_wstring(schema.timestamp()) << ": " << e.output << "\n";
                         }
                     }
                 }
@@ -176,8 +193,21 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
             }
 
             if (filepath_match(to_check, g_attack_path)) {
+                try {
+                    g_attack_pid = parser.parse<uint32_t>(L"ProcessID");
+                } catch (const std::exception& e) {
+                    if (g_dev_debug) {
+                        std::string e_msg(e.what());
+                        std::wstring msg(e_msg.begin(), e_msg.end());
+                        std::wcerr << L"[!] Error parsing ProcessID for attack start event: " << msg << L"\n";
+                    }
+                    g_attack_pid = 0; // reset to 0
+				}
+				g_attack_pid_str = L"pid:" + std::to_wstring(g_attack_pid);
+				//TODO g_attack_main_tid
+
                 if (g_dev_debug) {
-                    std::wcout << L"[+] Attack start detected: ProcessStart event for  " << last_wstr << L"\n";
+                    std::wcout << L"[+] Attack start detected (PID=" << last_int << L"): ProcessStart event for " << last_wstr << L"\n";
                 }
 				g_attack_pid = last_int;
                 g_attack_pid_str = L"pid:" + std::to_wstring(last_int);
@@ -189,11 +219,11 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 				}
             }
 		}
-		// check if the event marks the end of the attack
+		// check if the event marks the end of the attack -> reset attack PID (and path) to be able to detect next attack
         if (provider_name == kernel_process_provider_name && id == 2) { // ProcessStop event
             if (last_int == g_attack_pid) {
                 if (g_dev_debug) {
-                    std::wcout << L"[+] Attack end detected: ProcessStop event for  " << last_wstr << L"\n";
+                    std::wcout << L"[+] Attack end detected: ProcessStop event for " << last_wstr << L"\n";
                 }
                 g_attack_pid = 0;
                 g_attack_pid_str = L"";
@@ -205,7 +235,9 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
     }
     catch (const std::exception& e) {
         if (g_dev_debug) {
-			std::cerr << "[!] Error parsing event: " << e.what() << std::endl;
+            std::string e_msg(e.what());
+            std::wstring msg(e_msg.begin(), e_msg.end());
+			std::wcerr << L"[!] Error parsing event: " << msg << L"\n";
         }
         return;
     }
@@ -213,12 +245,6 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 
 // hand over schema for parsing
 void event_callback(const EVENT_RECORD& record, const krabs::trace_context& trace_context) {
-    if (g_dev_debug) {
-        //std::cout << "----------------------- Parsing EventID: " << record.EventHeader.EventDescriptor.Id << " ---------\n";
-    }
     g_trace_started = true;
     parse_etw_event(record, krabs::schema(record, trace_context.schema_locator));
-    if (g_dev_debug) {
-		//std::cout << "----------------------- OK EventID: " << record.EventHeader.EventDescriptor.Id << " ---------\n";
-    }
 }

@@ -52,7 +52,7 @@ struct filter {
 struct event {
     const int id;
     const std::vector<filter> filters;
-    const std::string output;
+    const std::wstring output;
 };
 
 struct events {

@@ -22,3 +22,4 @@ bool filepath_match(std::wstring, std::wstring);
 std::string wchar_to_string(const wchar_t*);
 std::wstring string_to_wstring(const std::string&);
 std::string wstring_to_string(const std::wstring&);
+std::wstring timestamp_to_wstring(LARGE_INTEGER);

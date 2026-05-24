@@ -22,13 +22,14 @@ const std::wstring c_build_report = L"spynet_report::build_report";
     6 ImageUnload
     11 ProcessFreeze
 */
-event kp1 = { 1, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Attack process started" };
-event kp2 = { 2, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Attack process stopped" };
-event kp3 = { 3, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, "" };
-event kp4 = { 4, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, "" };
-event kp5 = { 5, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "" };
-event kp6 = { 6, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "" };
-event kp11 = { 11,{ {L"FrozenProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, "Attack process frozen" };
+event kp1 = { 1, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"START --- Attack process started" };
+//event kp2 = { 2, { {L"ImageName", TDH_INTYPE_ANSISTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"STOP --- Attack process stopped" }; // ansi instead of unicode, thx, but only stores exe name not path
+event kp2 = { 2, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"STOP --- Attack process stopped" };
+event kp3 = { 3, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"" };
+event kp4 = { 4, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"" };
+event kp5 = { 5, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"" };
+event kp6 = { 6, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"" };
+event kp11 = { 11,{ {L"FrozenProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process frozen" };
 provider kernel_process_provider = {
     kernel_process_provider_name,
     {
@@ -42,8 +43,8 @@ provider kernel_process_provider = {
     10 NameCreate
     30 CreateNewFile
 */
-event kf10 = { 10, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, "Attack file (name) created" };
-event kf30 = { 30, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, "START --- Attack file created" };
+event kf10 = { 10, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (name) created" };
+event kf30 = { 30, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
 // todo: event kf30 is not matched in auto-detect mode, no dedicated start message
 provider kernel_file_provider = {
     kernel_file_provider_name,
@@ -109,17 +110,16 @@ provider kernel_api_provider = {
 * https://blog.levi.wiki/post/2026-01-09-defender-detection-mechanisms
 */
 // minimal
-event am1path = { 1, { {L"FirstResourcePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Emulation of attack file started" };
-event am1proc = { 1, { {L"FirstResourcePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_pid_str} }, "Emulation of attack proc started" }; // todo, this should match pid:$attack_pid, but will prob break
-event am5 = { 5, { {L"PID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, "Heuristic scan of attack file started" };
-event am7 = { 7, { {L"Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "Heuristic scan of attack file skipped" };
-event am43sig = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_get_hashes} }, "Get hashes of attack file" };
-event am43spy = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_build_report} }, "Submit scan report" };
-
+event am1path = { 1, { {L"First Resource Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"Emulation of attack file started" };
+event am1proc = { 1, { {L"First Resource Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_pid_str} }, L"Emulation of attack proc started" }; // should match "pid:1234"
+event am5 = { 5, { {L"PID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Heuristic scan of attack file started" };
+event am7 = { 7, { {L"Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"Heuristic scan of attack file skipped" };
+event am43sig = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_get_hashes} }, L"Get hashes of attack file" };
+event am43spy = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_build_report} }, L"Submit scan report" };
 
 // relevant
-event am30 = { 30, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "UFS emulation of attack file ( ? ) started" };
-event am32 = { 32, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, "UFS emulation of attack proc (loaded modules scan) started" };
+event am30 = { 30, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack file ( ? ) started" };
+event am32 = { 32, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack proc (loaded modules scan) started" };
 event am36 = { 36, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} } };
 event am44 = { 44, {  } }; // meta store task (stores identifiers)
 
