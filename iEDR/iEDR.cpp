@@ -21,6 +21,7 @@ verbosity_level g_level = MINIMAL;
 std::wstring g_attack_path;
 bool g_autodetect_attack_path = false;
 int g_attack_pid = 0;
+int g_edr_pid = 0; // todo get pid of MsMpEng.exe
 std::wstring g_attack_pid_str = L"";
 int g_attack_main_tid = 0;
 
@@ -135,15 +136,12 @@ int main(int argc, char* argv[]) {
     }
 
 	// wait until user presses enter to stop traces and exit
-	std::wcout << L"[+] Traces ready, please store your attack file at " << g_attack_path << L" and execute it to see EDR detections in action.\n";
-    // todo nicer print?
+	std::wcout << L"[+] Traces ready, store attack at " << g_attack_path << L"\n";
 
     std::cout << "[+] Press Enter to stop ETW traces and exit...\n";
 	std::cin.get();
 	stop_etw_traces();
 	std::cout << "[+] ETW traces stopped, exiting...\n";
-
-    // todo get any events from MDE event log
 
     // todo print end of analysis
 

@@ -15,6 +15,7 @@ extern verbosity_level g_level;
 extern std::wstring g_attack_path;
 extern bool g_autodetect_attack_path;
 extern int g_attack_pid;
+extern int g_edr_pid;
 extern std::wstring g_attack_pid_str;
 extern int g_attack_main_tid;
 

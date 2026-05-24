@@ -25,10 +25,10 @@ const std::wstring c_build_report = L"spynet_report::build_report";
 event kp1 = { 1, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"START --- Attack process started" };
 //event kp2 = { 2, { {L"ImageName", TDH_INTYPE_ANSISTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"STOP --- Attack process stopped" }; // ansi instead of unicode, thx, but only stores exe name not path
 event kp2 = { 2, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"STOP --- Attack process stopped" };
-event kp3 = { 3, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"" };
-event kp4 = { 4, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"" };
-event kp5 = { 5, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"" };
-event kp6 = { 6, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"" };
+event kp3 = { 3, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process started a thread" };
+event kp4 = { 4, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process stopped a thread" };
+event kp5 = { 5, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
+event kp6 = { 6, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
 event kp11 = { 11,{ {L"FrozenProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process frozen" };
 provider kernel_process_provider = {
     kernel_process_provider_name,
@@ -95,7 +95,11 @@ provider kernel_network_provider = {
 */
 event ka3 = { 3, { {L"LinkSourceName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} } };
 event ka4 = { 4, { { } } };
-event ka5 = { 5, { {L"TargetProcessId", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} , {L"DesiredAccess", TDH_INTYPE_UINT32, {operation::Type::CONTAINS_FLAG}, 0x400} } };
+event ka5 = { 5, { 
+    {L"TargetProcessId", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} , 
+    {L"DesiredAccess", TDH_INTYPE_UINT32, {operation::Type::CONTAINS_FLAG}, 0x400} ,
+    {L"OriginatingPID", TDH_INTYPE_UINT32, {operation::Type::ORIGINATING_PID}, &g_edr_pid} 
+}, L"MsMpEng opened attack process with VM read (0x400) access" };
 event ka6 = { 6, { {L"ThreadId", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_main_tid} } };
 provider kernel_api_provider = {
     kernel_api_audit_provider_name,

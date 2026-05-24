@@ -67,7 +67,7 @@ DWORD WINAPI t_start_traces(LPVOID param) {
         if (g_debug) {
             std::cout << "[+] ETW: Traces registered, starting...\n";
         }
-        trace_etw.start(); // trace_start is blocking, hence threaded // todo this breaks, why?
+        trace_etw.start(); // trace_start is blocking, hence threaded
     }
     catch (const std::exception& e) {
         std::cout << "[!] ETW: Traces exception: " << e.what() << "\n";
