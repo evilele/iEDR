@@ -51,11 +51,11 @@ void add_trace(const provider& p) {
     trace_etw.enable(prov);
 
     if (g_debug) {
-        std::wcout << L"[+] ETW: Enabling " << p.provider_name << L": ";
+        std::wcout << L"[+] ETW enabling " << p.provider_name << L": ";
         for (auto id : event_ids) {
-            std::cout << id << " ";
+            std::wcout << id << L" ";
         }
-        std::cout << "\n";
+        std::wcout << L"\n";
     }
 }
 
@@ -65,25 +65,25 @@ DWORD WINAPI t_start_traces(LPVOID param) {
             add_trace(p.second);
         }
         if (g_debug) {
-            std::cout << "[+] ETW: Traces registered, starting...\n";
+            std::wcout << L"[+] ETW traces registered, starting...\n";
         }
         trace_etw.start(); // trace_start is blocking, hence threaded
     }
     catch (const std::exception& e) {
-        std::cout << "[!] ETW: Traces exception: " << e.what() << "\n";
+        std::wcout << L"[!] ETW traces exception: " << e.what() << "\n";
     }
     catch (...) {
-        std::cout << "[!] ETW: Traces unknown exception\n";
+        std::wcout << L"[!] ETW traces unknown exception\n";
     }
 
-    std::cout << "[+] ETW: Traces thread finished\n";
+    std::wcout << L"[+] ETW traces thread finished\n";
     return 0;
 }
 
 bool start_etw_traces(std::vector<HANDLE>& threads) {
     HANDLE thread = CreateThread(NULL, 0, t_start_traces, NULL, 0, NULL);
     if (thread == NULL) {
-        std::cerr << "[!] ETW: Could not start ETW thread\n";
+        std::wcerr << L"[!] Could not start ETW thread\n";
         return false;
     }
     threads.push_back(thread);
@@ -97,6 +97,6 @@ void stop_etw_traces() {
         g_active_filters.clear();
     }
     catch (...) {
-        std::cerr << "[!] ETW: Failed to stop traces\n";
+        std::wcerr << L"[!] Failed to stop ETW traces\n";
     }
 }

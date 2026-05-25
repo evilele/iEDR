@@ -37,22 +37,23 @@ struct FilterValue {
 };
 
 struct operation {
-    enum class Type { EQUALS, PATH_EQUALS, CONTAINS_STR, CONTAINS_FLAG };
+    enum class Type { EQUALS, PATH_EQUALS, PID_STR_EQUALS, CONTAINS_STR, CONTAINS_FLAG };
     const Type type;
 };
 
 
 struct filter {
     const std::wstring field_name;
-    const uint16_t tdh_field_type;
     const operation op;
     const FilterValue expected;
 };
 
 struct event {
     const int id;
-    const std::vector<filter> filters;
+    const int* originating_pid; // optional originating PID filter
+    const std::vector<filter> filters; // field filters
     const std::wstring output;
+	const std::wstring add_output_field; // optional output from field value, must also be in filters
 };
 
 struct events {
@@ -76,5 +77,3 @@ struct provider {
 };
 
 extern std::map<std::wstring, provider> providers_to_track;
-
-extern std::map<std::wstring, std::vector<int>> providers_event_ids_no_debug_output; // to verbose

@@ -22,14 +22,13 @@ const std::wstring c_build_report = L"spynet_report::build_report";
     6 ImageUnload
     11 ProcessFreeze
 */
-event kp1 = { 1, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"START --- Attack process started" };
-//event kp2 = { 2, { {L"ImageName", TDH_INTYPE_ANSISTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"STOP --- Attack process stopped" }; // ansi instead of unicode, thx, but only stores exe name not path
-event kp2 = { 2, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"STOP --- Attack process stopped" };
-event kp3 = { 3, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process started a thread" };
-event kp4 = { 4, { {L"ProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process stopped a thread" };
-event kp5 = { 5, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
-event kp6 = { 6, { {L"ImageName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
-event kp11 = { 11,{ {L"FrozenProcessID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process frozen" };
+event kp1 = { 1, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"START --- Attack process started" };
+event kp2 = { 2, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"STOP --- Attack process stopped" };
+event kp3 = { 3, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process started a thread" };
+event kp4 = { 4, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process stopped a thread" };
+event kp5 = { 5, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
+event kp6 = { 6, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
+event kp11 = { 11, nullptr, { {L"FrozenProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process frozen" };
 provider kernel_process_provider = {
     kernel_process_provider_name,
     {
@@ -43,8 +42,8 @@ provider kernel_process_provider = {
     10 NameCreate
     30 CreateNewFile
 */
-event kf10 = { 10, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (name) created" };
-event kf30 = { 30, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
+event kf10 = { 10, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (name) created" };
+event kf30 = { 30, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
 // todo: event kf30 is not matched in auto-detect mode, no dedicated start message
 provider kernel_file_provider = {
     kernel_file_provider_name,
@@ -66,14 +65,14 @@ provider kernel_file_provider = {
     58 UDPIPDatasentoverUDPprotocol
     59 UDPIPDatareceivedoverUDPprotocol
 */
-event kn12 = { 12, {  { } } };
-event kn15 = { 15, {  { } } };
-event kn28 = { 28, {  { } } };
-event kn31 = { 31, {  { } } };
-event kn42 = { 42, {  { } } };
-event kn43 = { 43, {  { } } };
-event kn58 = { 58, {  { } } };
-event kn59 = { 59, {  { } } };
+event kn12 = { 12, nullptr, {  { } } };
+event kn15 = { 15, nullptr, {  { } } };
+event kn28 = { 28, nullptr, {  { } } };
+event kn31 = { 31, nullptr, {  { } } };
+event kn42 = { 42, nullptr, {  { } } };
+event kn43 = { 43, nullptr, {  { } } };
+event kn58 = { 58, nullptr, {  { } } };
+event kn59 = { 59, nullptr, {  { } } };
 provider kernel_network_provider = {
     kernel_network_provider_name,
     {
@@ -93,14 +92,13 @@ provider kernel_network_provider = {
     7: IoRegisterLastChanceShutdownNotification(kernel)
     8: IoRegisterShutdownNotification(kernel)
 */
-event ka3 = { 3, { {L"LinkSourceName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} } };
-event ka4 = { 4, { { } } };
-event ka5 = { 5, { 
-    {L"TargetProcessId", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} , 
-    {L"DesiredAccess", TDH_INTYPE_UINT32, {operation::Type::CONTAINS_FLAG}, 0x400} ,
-    {L"OriginatingPID", TDH_INTYPE_UINT32, {operation::Type::ORIGINATING_PID}, &g_edr_pid} 
-}, L"MsMpEng opened attack process with VM read (0x400) access" };
-event ka6 = { 6, { {L"ThreadId", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_main_tid} } };
+event ka3 = { 3, nullptr, { {L"LinkSourceName", {operation::Type::EQUALS}, &g_attack_path} } };
+event ka4 = { 4, nullptr, { { } } };
+event ka5 = { 5, &g_edr_pid, {
+    {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pid} , 
+    {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x400} ,
+}, MDE_name + L" opened attack process with VM read access:",  L"DesiredAccess" };
+event ka6 = { 6, nullptr, { {L"ThreadId", {operation::Type::EQUALS}, &g_attack_main_tid} } };
 provider kernel_api_provider = {
     kernel_api_audit_provider_name,
     {
@@ -114,50 +112,50 @@ provider kernel_api_provider = {
 * https://blog.levi.wiki/post/2026-01-09-defender-detection-mechanisms
 */
 // minimal
-event am1path = { 1, { {L"First Resource Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"Emulation of attack file started" };
-event am1proc = { 1, { {L"First Resource Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_pid_str} }, L"Emulation of attack proc started" }; // should match "pid:1234"
-event am5 = { 5, { {L"PID", TDH_INTYPE_UINT32, {operation::Type::EQUALS}, &g_attack_pid} }, L"Heuristic scan of attack file started" };
-event am7 = { 7, { {L"Path", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"Heuristic scan of attack file skipped" };
-event am43sig = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_get_hashes} }, L"Get hashes of attack file" };
-event am43spy = { 43, { {L"Name", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} , {L"Message", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &c_build_report} }, L"Submit scan report" };
+event am1path = { 1, nullptr, { {L"First Resource Path", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Emulation of attack file started" };
+event am1proc = { 1, nullptr, { {L"First Resource Path", {operation::Type::PID_STR_EQUALS}, &g_attack_pid} }, L"Emulation of attack proc started" }; // should match "pid:1234"
+event am5 = { 5, nullptr, { {L"PID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Heuristic scan of attack file started" };
+event am7 = { 7, nullptr, { {L"Path", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Heuristic scan of attack file skipped" };
+event am43sig = { 43, nullptr, { {L"Name", {operation::Type::PATH_EQUALS}, &g_attack_path} , {L"Message", {operation::Type::EQUALS}, &c_get_hashes} }, L"Get hashes of attack file" };
+event am43spy = { 43, nullptr, { {L"Name", {operation::Type::PATH_EQUALS}, &g_attack_path} , {L"Message", {operation::Type::EQUALS}, &c_build_report} }, L"Submit scan report" };
 
 // relevant
-event am30 = { 30, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack file ( ? ) started" };
-event am32 = { 32, { {L"FilePath", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack proc (loaded modules scan) started" };
-event am36 = { 36, { {L"FileName", TDH_INTYPE_UNICODESTRING, {operation::Type::EQUALS}, &g_attack_path} } };
-event am44 = { 44, {  } }; // meta store task (stores identifiers)
+event am30 = { 30, nullptr, { {L"FilePath", {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack file ( ? ) started" };
+event am32 = { 32, nullptr, { {L"FilePath", {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack proc (loaded modules scan) started" };
+event am36 = { 36, nullptr, { {L"FileName", {operation::Type::EQUALS}, &g_attack_path} } };
+event am44 = { 44, nullptr, {  } }; // meta store task (stores identifiers)
 
 // all
-event am2 = { 2, {  } };
-event am3 = { 3, {  } };
-event am4 = { 4, {  } };
-event am6 = { 6, {  } };
-event am11 = { 11, {  } };
-event am15 = { 15, {  } };
-event am16 = { 16, {  } };
-event am26 = { 26, {  } };
-event am31 = { 31, {  } };
-event am33 = { 33, {  } };
-event am38 = { 38, {  } };
-event am46 = { 46, {  } };
-event am53 = { 53, {  } };
-event am59 = { 59, {  } };
-event am60 = { 60, {  } };
-event am62 = { 62, {  } };
-event am67 = { 67, {  } };
-event am70 = { 70, {  } };
-event am71 = { 71, {  } };
-event am72 = { 72, {  } };
-event am73 = { 73, {  } };
-event am74 = { 74, {  } };
-event am95 = { 95, {  } };
-event am103 = { 103, {  } };
-event am104 = { 104, {  } };
-event am105 = { 105, {  } };
-event am109 = { 109, {  } };
-event am110 = { 110, {  } };
-event am111 = { 111, {  } };
-event am112 = { 112, {  } };
+event am2 = { 2, nullptr, {  } };
+event am3 = { 3, nullptr, {  } };
+event am4 = { 4, nullptr, {  } };
+event am6 = { 6, nullptr, {  } };
+event am11 = { 11, nullptr, {  } };
+event am15 = { 15, nullptr, {  } };
+event am16 = { 16, nullptr, {  } };
+event am26 = { 26, nullptr, {  } };
+event am31 = { 31, nullptr, {  } };
+event am33 = { 33, nullptr, {  } };
+event am38 = { 38, nullptr, {  } };
+event am46 = { 46, nullptr, {  } };
+event am53 = { 53, nullptr, {  } };
+event am59 = { 59, nullptr, {  } };
+event am60 = { 60, nullptr, {  } };
+event am62 = { 62, nullptr, {  } };
+event am67 = { 67, nullptr, {  } };
+event am70 = { 70, nullptr, {  } };
+event am71 = { 71, nullptr, {  } };
+event am72 = { 72, nullptr, {  } };
+event am73 = { 73, nullptr, {  } };
+event am74 = { 74, nullptr, {  } };
+event am95 = { 95, nullptr, {  } };
+event am103 = { 103, nullptr, {  } };
+event am104 = { 104, nullptr, {  } };
+event am105 = { 105, nullptr, {  } };
+event am109 = { 109, nullptr, {  } };
+event am110 = { 110, nullptr, {  } };
+event am111 = { 111, nullptr, {  } };
+event am112 = { 112, nullptr, {  } };
 
 provider antimalware_provider = {
     antimalware_provider_name,
@@ -174,8 +172,4 @@ std::map<std::wstring, provider> providers_to_track = {
     {kernel_network_provider.provider_name, kernel_network_provider},
     {kernel_api_provider.provider_name, kernel_api_provider},
     {antimalware_provider.provider_name, antimalware_provider}
-};
-
-std::map < std::wstring, std::vector<int>> providers_event_ids_no_debug_output = {
-    { kernel_api_audit_provider_name, {5} }
 };

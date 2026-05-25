@@ -2,11 +2,10 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-
-#include "cxxopts.h"
-
 #include <iostream>
 #include <vector>
+
+#include "cxxopts.h"
 
 #include "iEDR.h"
 #include "etwreader.h"
@@ -21,10 +20,9 @@ verbosity_level g_level = MINIMAL;
 std::wstring g_attack_path;
 bool g_autodetect_attack_path = false;
 int g_attack_pid = 0;
-int g_edr_pid = 0; // todo get pid of MsMpEng.exe
-std::wstring g_attack_pid_str = L"";
+int g_edr_pid = 0;
 int g_attack_main_tid = 0;
-
+ULONGLONG g_last_attack_start = 0;
 
 bool is_admin() {
     BOOL is_admin = FALSE;
@@ -46,7 +44,7 @@ int main(int argc, char* argv[]) {
     std::cout << BANNER;
 
     if (!is_admin()) {
-        std::cerr << "[!] This program must be run as administrator.\n";
+        std::wcerr << L"[!] This program must be run as administrator.\n";
         return 1;
 	}
 
@@ -77,14 +75,14 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     if (result.count("attack") == 0) {
-        std::cerr << "[!] Attack path to track is required.\n";
+        std::cerr << L"[!] Attack path to track is required.\n";
         std::cout << options.help() << "\n";
         return 1;
     }
     else {
 		g_attack_path = string_to_wstring(result["attack"].as<std::string>());
         if (g_attack_path.empty()) {
-            std::cerr << "[!] Attack path to track cannot be empty.\n";
+            std::wcerr << L"[!] Attack path to track cannot be empty.\n";
             return 1;
 		}
         if (g_attack_path[g_attack_path.length() - 1] == (L'\\')) {
@@ -98,17 +96,17 @@ int main(int argc, char* argv[]) {
 
     if (result.count("verbose")) {
         g_dev_debug = true;
-        std::cout << "[+] Development debug output enabled.\n";
+        std::wcout << L"[+] Development debug output enabled.\n";
     }
     if (result.count("debug")) {
         g_debug = true;
-        std::cout << "[+] Debug output enabled.\n";
+        std::wcout << L"[+] Debug output enabled.\n";
 	}
 
     if (result.count("level")) {
         int level = result["level"].as<int>();
         if (level < 0 || level > 2) {
-            std::cerr << "[!] Invalid verbosity level. Please provide a value between 0 and 2.\n";
+            std::wcerr << L"[!] Invalid verbosity level. Please provide a value between 0 and 2.\n";
             return 1;
 		}
         g_level = static_cast<verbosity_level>(level);
@@ -116,12 +114,21 @@ int main(int argc, char* argv[]) {
     else {
         g_level = MINIMAL;
     }
-    std::cout << "[+] Verbosity level set to: " << g_level << "\n";
+    std::wcout << L"[+] Verbosity level set to: " << g_level << L"\n";
+
+	g_edr_pid = get_process_id_by_name(MDE_name);
+    if (g_edr_pid == 0) {
+        std::wcerr << L"[!] Failed to find " << MDE_name << L" process.\n";
+        return 1;
+	}
+    if (g_debug) {
+        std::wcout << L"[+] Found " << MDE_name << L" process with PID=" << g_edr_pid << L"\n";
+	}
 
     // start ETW traces for monitoring
     std::vector<HANDLE> threads;
     if (!start_etw_traces(threads)) {
-        std::cerr << "[!] EDRi: Failed to start ETW traces.\n";
+        std::wcerr << L"[!] Failed to start ETW traces.\n";
         return 1;
     }
 
@@ -129,7 +136,7 @@ int main(int argc, char* argv[]) {
     int wait_counter = 0;
     while (!g_trace_started) {
         if (g_debug && wait_counter % 50 == 0) {
-            std::cout << "[+] Waiting for ETW traces to start...\n";
+            std::wcout << L"[+] Waiting for ETW traces to start...\n";
 		}
         Sleep(100);
 		wait_counter++;
@@ -138,10 +145,10 @@ int main(int argc, char* argv[]) {
 	// wait until user presses enter to stop traces and exit
 	std::wcout << L"[+] Traces ready, store attack at " << g_attack_path << L"\n";
 
-    std::cout << "[+] Press Enter to stop ETW traces and exit...\n";
+    std::wcout << L"[+] Press Enter to stop ETW traces and exit...\n";
 	std::cin.get();
 	stop_etw_traces();
-	std::cout << "[+] ETW traces stopped, exiting...\n";
+	std::wcout << L"[+] ETW traces stopped, exiting...\n";
 
     // todo print end of analysis
 

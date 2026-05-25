@@ -16,6 +16,10 @@ bool matches(long long actual, const filter& f) {
         return actual == expected;
     case operation::Type::CONTAINS_FLAG:
         return (actual & expected) != 0;
+    case operation::Type::PID_STR_EQUALS: {
+        std::wstring expected_str = L"pid:" + std::to_wstring(expected);
+        return std::to_wstring(actual) == expected_str;
+	}
     default:
         return false;
     }
@@ -28,10 +32,12 @@ bool matches(const std::wstring& actual, const filter& f) {
     case operation::Type::EQUALS:
         return actual == expected;
     case operation::Type::PATH_EQUALS: {
+        /*
         if (g_autodetect_attack_path && g_attack_path.find_last_of(L'\\') == g_attack_path.length() - 1) { // in autodetect mode, no concrete path set yet
 			std::wstring actual_folderpath = actual.substr(0, actual.find_last_of(L'\\'));
             return filepath_match(actual_folderpath, expected);
         }
+        */
 		return filepath_match(actual, expected);
     }
     case operation::Type::CONTAINS_STR:
@@ -44,35 +50,182 @@ bool matches(const std::wstring& actual, const filter& f) {
 void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
     try {
         std::wstring provider_name = schema.provider_name();
-        unsigned short id = schema.event_id();
-		std::wstring task_name = schema.task_name();
+        int id = schema.event_id();
+
+        // 0. track attack process start and stop
+        if (provider_name == kernel_process_provider_name) {
+
+            // check if the event marks the start of the attack
+            if (g_attack_pid == 0 && id == 1) { // ProcessStart event
+                krabs::parser parser(schema);
+
+                try {
+                    // the attack path / folder to check against, depending on auto-detect mode
+                    std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
+                    std::wstring to_check = image_name;
+
+                    // remove any.exe from C:\Users\Public\any.exe to compare the folder path for auto-detect mode
+                    if (g_autodetect_attack_path) {
+                        size_t last_backslash = image_name.find_last_of(L'\\');
+                        if (last_backslash != std::wstring::npos) {
+                            to_check = image_name.substr(0, last_backslash + 1);
+                        }
+                    }
+
+                    if (filepath_match(to_check, g_attack_path)) {
+                        try {
+                            g_attack_pid = parser.parse<uint32_t>(L"ProcessID");
+							g_last_attack_start = GetTickCount64();
+
+                            if (g_debug) {
+                                std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
+                            }
+
+                            if (g_autodetect_attack_path) {
+                                g_attack_path = image_name; // set to actual file path for auto-detect mode
+                                if (g_debug) {
+                                    std::wcout << L"[+] Auto-detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
+                                }
+                            }
+                        }
+                        catch (const std::exception& e) {
+                            if (g_dev_debug) {
+                                std::wcerr << L"[!] Error parsing ProcessID for attack start event: " << string_to_wstring(e.what()) << L"\n";
+                            }
+                        }
+                    }
+                }
+                catch (const std::exception& e) {
+                    if (g_dev_debug) {
+                        std::wcerr << L"[!] Error parsing ImageName for attack start event: " << string_to_wstring(e.what()) << L"\n";
+                    }
+                }
+            }
+
+            // check if the event marks the start of the main thread
+            else if (g_attack_main_tid == 0 && id == 3) { // ThreadStart event
+                krabs::parser parser(schema);
+
+                try {
+                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
+                    if (proc_id == g_attack_pid) {
+                        g_attack_main_tid = parser.parse<uint32_t>(L"ThreadID");
+                        if (g_debug) {
+                            std::wcout << L"[+] Detected main thread of attack process -> TID=" << g_attack_main_tid << L"\n";
+                        }
+                    }
+                }
+                catch (const std::exception& e) {
+                    if (g_dev_debug) {
+                        std::wcerr << L"[!] Error parsing ThreadStart event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
+                    }
+                }
+            }
+
+            // check if the event marks the end of the attack -> reset attack PID (and path) to be able to detect next attack
+            else if (g_attack_pid != 0 && id == 2) { // ProcessStop event
+                krabs::parser parser(schema);
+
+                try {
+                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
+                    std::string image_name = parser.parse<std::string>(L"ImageName"); // event id 2 uses ansi string
+
+                    if (proc_id == g_attack_pid) {
+                        if (g_debug) {
+                            std::wcout << L"[+] Detected termination of attack: " << string_to_wstring(image_name) << L"\n";
+                        }
+
+                        // reset tracking variables with a delay
+                        reset_attack_tracking_threaded();
+
+                        // todo get any events from MDE event log
+                    }
+                }
+                catch (const std::exception& e) {
+                    if (g_dev_debug) {
+                        std::wcerr << L"[!] Error parsing ProcessID for attack end event: " << string_to_wstring(e.what()) << L"\n";
+                    }
+                }
+            }
+
+            // check if the event marks the end of the main thread -> reset main thread TID
+            else if (g_attack_pid != 0 && g_attack_main_tid != 0 && id == 4) { // ThreadStop event
+                krabs::parser parser(schema);
+
+                try {
+                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
+                    int thread_id = parser.parse<uint32_t>(L"ThreadID");
+                    if (proc_id == g_attack_pid && thread_id == g_attack_main_tid) {
+                        if (g_dev_debug) {
+                            std::wcout << L"[+] Detected end of main thread of attack process\n";
+                        }
+                        g_attack_main_tid = 0;
+                    }
+                }
+                catch (const std::exception& e) {
+                    if (g_dev_debug) {
+                        std::wcerr << L"[!] Error parsing ThreadStop event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
+                    }
+                }
+            }
+        }
 
         // 1.check if this provider is interesting
         auto prov_it = providers_to_track.find(provider_name);
         if (prov_it == providers_to_track.end()) return;
-		const provider& p = prov_it->second;
+		const provider& prov = prov_it->second;
 
-        int last_originating_pid = schema.process_id();
-        int last_int = -13371337;
-		std::wstring last_wstr = L"dummypl4ceholder1234";
-
-        // 2. parse fields
-        krabs::parser parser(schema);
-
-		// 3. check if this event ID is interesting, given the provider
-        const auto& events = p.events_to_track.get(g_level);
+		// 2. check if this event ID is interesting, given the provider
+        const auto& events = prov.events_to_track.get(g_level);
         for (const auto& e : events) {
             if (e.id != id) {
                 continue;
             }
 
-            // 4. iterate through all filters defined for this specific event & process filters for this specific event
+            // 3. iterate through all filters defined for this specific event & process filters for this specific event
             bool all_filters_passed = true;
+
+            // 4. check originating PID filter (the PID emitting the event) if applicable
+            if (e.originating_pid != nullptr) {
+                int originating_pid = schema.process_id();
+                if (*e.originating_pid != originating_pid) {
+                    if (g_dev_debug) {
+                        std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.event_name()
+                            << "." << schema.task_name() << L" : (type=uint) process_id" << L" actual: " << originating_pid << L"\n";
+                    }
+                    continue; // skip field parsing if originating PID filter already fails
+                }
+			}
+
+            // 5. parse fields
+            krabs::parser parser(schema);
+			std::wstring add_field_output = L"";
 
             for (const auto& f : e.filters) {
                 bool current_match = false;
+                int type = -1;
+                int last_int = -13371337;
+                std::wstring last_wstr = L"dummypl4ceholder1234";
+
                 try {
-                    switch (f.tdh_field_type) {
+                    // get property of given event filter
+                    const krabs::property* prop  = nullptr;
+                    for (const auto& p : parser.properties()) {
+                        if (p.name() == f.field_name) {
+							type = p.type();
+                            break;
+                        }
+                    }
+                    if (type == -1) { // not found
+                        if (g_dev_debug) {
+                            std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.event_name()
+                                << "." << schema.task_name() << L" : field '" << f.field_name << L"' not found in event properties\n";
+                        }
+                        current_match = false;
+                        break; // field not found, mark filter as failed and skip to next filter
+					}
+
+                    switch (type) {
                     case TDH_INTYPE_UINT16: {
                         uint16_t val = parser.parse<uint16_t>(f.field_name);
                         current_match = matches((int)val, f);
@@ -107,15 +260,28 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     }
                     default:
                         current_match = false;
-						std::wcout << L"[!] Unsupported TDH field type " << f.tdh_field_type << L" for field '" 
-                            << f.field_name << L"' in EventID " << provider_name << L" - " << schema.event_id() << L"\n";
+						std::wcout << L"[!] Unsupported TDH field type " << type << L" for field '"
+                            << f.field_name << L"' in EventID " << provider_name << L" - " << id << L"\n";
                         break;
                     }
+
+                    // if this is the field we also want to output for matched events, store the output value for later
+                    if (e.add_output_field == f.field_name) {
+                        add_field_output = L" " + f.field_name + L"=";
+                        if (type == TDH_INTYPE_UNICODESTRING || type == TDH_INTYPE_ANSISTRING) {
+                            add_field_output += last_wstr;
+                        }
+                        else {
+                            // convert last_int to hex
+                            std::wstringstream wss;
+							wss << L"0x" << std::hex << last_int;
+							add_field_output += wss.str();
+                        }
+					}
                 }
                 catch (const std::exception& e) {
                     if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing field '" << f.field_name << L"' with type " << f.tdh_field_type 
-                            << L" for event " << provider_name << L" - " << schema.event_id() << L"\n";
+                        std::wcerr << L"[!] Error parsing field '" << f.field_name << L"' (type=" << type << L") " << provider_name << L" - " << id << L"\n";
                         std::wcerr << L"    Exception: " << string_to_wstring(e.what()) << L"\n";
 
                         std::wcout << L"[***] Available Properties: ";
@@ -128,35 +294,27 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 }
 
                 if (!current_match) {
-                    all_filters_passed = false;
-
                     if (g_dev_debug) {
-						bool skip_output = false; // some events are very noisy
-                        auto prov_it = providers_event_ids_no_debug_output.find(provider_name);
-                        if (prov_it != providers_event_ids_no_debug_output.end()) {
-							auto ids = prov_it->second;
-                            if (std::find(ids.begin(), ids.end(), schema.event_id()) != ids.end()) {
-								skip_output = true; // this is a noisy event -> skip
-                            }
+                        std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." <<  schema.event_name()
+                            << "." << schema.task_name() << L" : (type=" << type << L") " << f.field_name;
+                        if (last_int != -13371337) {
+                            std::wcout << L" actual: " << last_int << L"\n";
                         }
-
-                        if (!skip_output) {
-                            std::wcout << L"[-] Filter failed: " << provider_name << L" - " << schema.event_id() << L" : (type " << f.tdh_field_type << L") " << f.field_name;
-                            if (last_int != -13371337) {
-                                std::wcout << L" actual: " << last_int << L"\n";
-                            }
-                            else if (last_wstr.length() && std::wcscmp(last_wstr.c_str(), L"dummypl4ceholder1234") != 0) {
-                                std::wcout << L" actual: " << last_wstr << L"\n";
-                            }
-                            else {
-                                std::wcout << L" actual value could not be parsed\n";
-                            }
+                        else if (last_wstr.length() && std::wcscmp(last_wstr.c_str(), L"dummypl4ceholder1234") != 0) {
+                            std::wcout << L" actual: " << last_wstr << L"\n";
+                        }
+                        else {
+                            std::wcout << L" actual value could not be parsed\n";
                         }
                     }
+
+                    // mark event as not matching
+                    all_filters_passed = false;
                     break;
                 }
             }
-            // 5. If all filters passed, output the event
+
+            // 6. if all filters passed, output the event
             if (all_filters_passed) {
 
                 // always output timestamp for matches
@@ -169,128 +327,22 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 else { // output defined interpretation
                     std::wcout << e.output;
                 }
+                if (!e.add_output_field.empty()) { // if specific output field defined, output the value of that field as well
+                    if (!add_field_output.empty()) {
+                        std::wcout << add_field_output;
+                    }
+                    else if (g_dev_debug) {
+                        std::wcout << L" [!] Output field '" << e.add_output_field << L"' defined but value could not be parsed";
+					}
+				}
 
 				// and maybe output more debug info
                 if (g_dev_debug) { 
-                    std::wcout << L" - " << provider_name << L" - " << schema.event_id();
+                    std::wcout << L" - " << provider_name << L" - " << id;
                 }
 				std::wcout << L"\n";
             }
 		}
-
-        // post parsing checks for kernel process events
-        if (provider_name == kernel_process_provider_name) {
-
-            // check if the event marks the start of the attack
-            if (g_attack_pid == 0 && id == 1) { // ProcessStart event
-                try {
-                    // the attack path / folder to check against, depending on auto-detect mode
-                    std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
-					std::wstring to_check = image_name;
-
-                    // remove any.exe from C:\Users\Public\any.exe to compare the folder path for auto-detect mode
-                    if (g_autodetect_attack_path) { 
-                        size_t last_backslash = image_name.find_last_of(L'\\');
-                        if (last_backslash != std::wstring::npos) {
-                            to_check = image_name.substr(0, last_backslash + 1);
-                        }
-                    }
-
-                    if (filepath_match(to_check, g_attack_path)) {
-                        try {
-                            g_attack_pid = parser.parse<uint32_t>(L"ProcessID");
-                            g_attack_pid_str = L"pid:" + std::to_wstring(g_attack_pid);
-
-                            if (g_debug) {
-                                std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
-                            }
-
-                            if (g_autodetect_attack_path) {
-                                g_attack_path = image_name; // set to actual file path for auto-detect mode
-                                if (g_debug) {
-                                    std::wcout << L"[+] Auto-detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
-                                }
-                            }
-                        }
-                        catch (const std::exception& e) {
-                            if (g_dev_debug) {
-                                std::wcerr << L"[!] Error parsing ProcessID for attack start event: " << string_to_wstring(e.what()) << L"\n";
-                            }
-                        }
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ImageName for attack start event: " << string_to_wstring(e.what()) << L"\n";
-                    }
-				}
-            }
-
-            // check if the event marks the start of the main thread
-            if (g_attack_main_tid == 0 && id == 3) { // ThreadStart event
-                try {
-                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
-                    if (proc_id == g_attack_pid) {
-                        g_attack_main_tid = parser.parse<uint32_t>(L"ThreadID");
-                        if (g_debug) {
-                            std::wcout << L"[+] Detected main thread of attack process -> TID=" << g_attack_main_tid << L"\n";
-                        }
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ThreadStart event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
-                    }
-                }
-            }
-
-            // check if the event marks the end of the attack -> reset attack PID (and path) to be able to detect next attack
-            if (g_attack_pid != 0 && id == 2) { // ProcessStop event
-                try {
-                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
-                    std::string image_name = parser.parse<std::string>(L"ImageName"); // event id 2 uses ansi string
-
-                    if (proc_id == g_attack_pid) {
-                        if (g_debug) {
-                            std::wcout << L"[+] Detected termination of attack: " << string_to_wstring(image_name) << L"\n";
-                        }
-
-                        // reset tracking variables
-                        g_attack_pid = 0;
-                        g_attack_pid_str = L"";
-                        if (g_autodetect_attack_path && g_attack_path.find_last_of(L'\\') < g_attack_path.length()) {
-                            g_attack_path = g_attack_path.substr(0, g_attack_path.find_last_of(L'\\') + 1); // reset to folder path
-                        }
-
-                        // todo get any events from MDE event log
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ProcessID for attack end event: " << string_to_wstring(e.what()) << L"\n";
-                    }
-                }
-            }
-
-			// check if the event marks the end of the main thread -> reset main thread TID
-            if (g_attack_pid != 0 && g_attack_main_tid != 0 && id == 4) { // ThreadStop event
-                try {
-                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
-                    int thread_id = parser.parse<uint32_t>(L"ThreadID");
-                    if (proc_id == g_attack_pid && thread_id == g_attack_main_tid) {
-                        if (g_dev_debug) {
-                            std::wcout << L"[+] Detected end of main thread of attack process\n";
-                        }
-                        g_attack_main_tid = 0;
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ThreadStop event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
-                    }
-                }
-            }
-        }
     }
     catch (const std::exception& e) {
         if (g_dev_debug) {

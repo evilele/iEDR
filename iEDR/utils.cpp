@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <tlhelp32.h>
+#include <iostream>
+#include <thread>
 
 #include "utils.h"
 
@@ -101,4 +104,59 @@ std::wstring timestamp_to_wstring(LARGE_INTEGER timestamp) {
         << std::setw(3) << st.wMilliseconds
         << std::setw(4) << fractions_100ns;
 	return wss.str();
+}
+
+/* get process id by proc name */
+int get_process_id_by_name(const std::wstring& proc) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+
+    PROCESSENTRY32 pe;
+    pe.dwSize = sizeof(pe);
+    int pid = 0;
+
+    if (Process32First(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, proc.c_str()) == 0) {
+                pid = pe.th32ProcessID;
+                break;
+            }
+        } while (Process32Next(snap, &pe));
+    }
+
+    CloseHandle(snap);
+    return pid;
+}
+
+/* reset attack tracking variables (with a delay) */
+void reset_attack_tracking_threaded() {
+    // private helper function to be threaded
+    auto reset = []() {
+        std::this_thread::sleep_for(std::chrono::seconds(tracking_shutdown_delay));
+        g_attack_pid = 0;
+        g_attack_main_tid = 0;
+        if (g_debug) {
+            std::wcout << L"[+] Reset attack tracking variables after attack termination\n";
+        }
+	};
+	std::thread(reset).detach();
+}
+
+/* TODO get relevant events from defender event log */
+std::wstring get_mde_eventlog() {
+    // return lines as eventid:message:description
+	std::wstring log = MDE_log + L" events:\n";
+    bool found_events = false;
+	// std::vector<std::wstring> events = get_mde_events_after(g_last_attack_start);
+	// for (const auto& e : events) {
+    // if (e.id >= 1000 && e.id < 2000) {
+	// log += std::to_wstring(e.id) + L":" + e.message + L":" + e.description + L"\n";
+    // found_events = true;
+    // }
+    if (!found_events && g_debug) {
+        log = L"[-] No relevant events found in " + MDE_log;
+    }
+    return log;
 }
