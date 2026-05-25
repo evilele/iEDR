@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::cout << "Press ENTER to resolve dump functions";
+    std::cout << "Press ENTER to resolve dump functions and decondition";
 	std::cin.get();
 
     // resolving functions
@@ -83,8 +83,6 @@ int main(int argc, char** argv) {
         CloseHandle(hFile);
         return 1;
     }
-
-    std::cout << "Starting deconditioning...\n";
 
     constexpr int dumps = 10;
     std::vector<std::wstring> procsDump = {
