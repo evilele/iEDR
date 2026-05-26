@@ -32,10 +32,10 @@ bool matches(const std::wstring& actual, const filter& f) {
     case operation::Type::EQUALS:
         return actual == expected;
     case operation::Type::PATH_EQUALS: {
-        /*
+        /* TODO remove?
         if (g_autodetect_attack_path && g_attack_path.find_last_of(L'\\') == g_attack_path.length() - 1) { // in autodetect mode, no concrete path set yet
 			std::wstring actual_folderpath = actual.substr(0, actual.find_last_of(L'\\'));
-            return filepath_match(actual_folderpath, expected);
+            return filepath_match(actual_folderpath, expected, false);
         }
         */
 		return filepath_match(actual, expected);
@@ -52,7 +52,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
         std::wstring provider_name = schema.provider_name();
         int id = schema.event_id();
 
-        // 0. track attack process start and stop
+        // track attack process start and stop
         if (provider_name == kernel_process_provider_name) {
 
             // check if the event marks the start of the attack
@@ -75,7 +75,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     if (filepath_match(to_check, g_attack_path)) {
                         try {
                             g_attack_pid = parser.parse<uint32_t>(L"ProcessID");
-							g_last_attack_start = GetTickCount64();
+							GetSystemTime(&g_last_attack_start);
 
                             if (g_debug) {
                                 std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
@@ -135,10 +135,8 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                             std::wcout << L"[+] Detected termination of attack: " << string_to_wstring(image_name) << L"\n";
                         }
 
-                        // reset tracking variables with a delay
-                        reset_attack_tracking_threaded();
-
-                        // todo get any events from MDE event log
+                        // reset tracking variables and print event log with a delay
+                        reset_attack_tracking_and_print_evtl_threaded();
                     }
                 }
                 catch (const std::exception& e) {

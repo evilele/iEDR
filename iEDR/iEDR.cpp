@@ -18,11 +18,11 @@ bool g_dev_debug = false;
 verbosity_level g_level = MINIMAL;
 
 std::wstring g_attack_path;
-bool g_autodetect_attack_path = false;
+bool g_autodetect_attack_path = false; // TODO remove this, stupid
 int g_attack_pid = 0;
 int g_edr_pid = 0;
 int g_attack_main_tid = 0;
-ULONGLONG g_last_attack_start = 0;
+SYSTEMTIME g_last_attack_start = {0};
 
 bool is_admin() {
     BOOL is_admin = FALSE;

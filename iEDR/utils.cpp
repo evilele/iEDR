@@ -2,14 +2,18 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <winevt.h>
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
 #include <tlhelp32.h>
 #include <iostream>
 #include <thread>
+#include <vector>
 
 #include "utils.h"
+
+#pragma comment(lib, "wevtapi.lib")
 
 /* checks if the path after C:\ D:\ \\Device\HarddiskVolumeX is the same, not including the drive and trailing \ */
 bool filepath_match(std::wstring path1, std::wstring path2) {
@@ -130,33 +134,129 @@ int get_process_id_by_name(const std::wstring& proc) {
     return pid;
 }
 
+/* ticks to iso timestamp YYYY-MM-DDTHH:MM:SS.MMMZ */
+std::wstring system_time_to_iso(const SYSTEMTIME& st) {
+    std::wstringstream wss;
+    wss << std::setfill(L'0')
+        << std::setw(4) << st.wYear << L"-"
+        << std::setw(2) << st.wMonth << L"-"
+        << std::setw(2) << st.wDay << L"T"
+        << std::setw(2) << st.wHour << L":"
+        << std::setw(2) << st.wMinute << L":"
+        << std::setw(2) << st.wSecond << L"Z";
+    return wss.str();
+}
+
+/* parse defender event type */
+std::wstring get_defender_events(int event_id, std::vector<std::wstring> to_extract, std::wstring event_type_desc) {
+	std::wstring id = std::to_wstring(event_id);
+    std::wstring after_time = system_time_to_iso(g_last_attack_start);
+
+    // filter ID 1116 and System Time > g_last_attack_start
+    std::wstring query = L"*[System[(EventID = " + id + L") and TimeCreated[@SystemTime >= '" + after_time + L"']]]";
+    EVT_HANDLE hResults = EvtQuery(NULL, MDE_log.c_str(), query.c_str(), EvtQueryChannelPath | EvtQueryReverseDirection);
+    if (!hResults) {
+        if (g_dev_debug) {
+            std::wcerr << L"[!] Failed to query events for " << id << L" in " << MDE_log << L": " << GetLastError() << L"\n";
+		}
+    }
+
+    std::wstring log = L"";
+    EVT_HANDLE hEvents[10];
+    DWORD returned = 0;
+
+    while (EvtNext(hResults, 10, hEvents, 1000, 0, &returned)) {
+        for (DWORD i = 0; i < returned; EvtClose(hEvents[i++])) {
+            DWORD used = 0, count = 0;
+            EvtRender(NULL, hEvents[i], EvtRenderEventXml, 0, NULL, &used, &count);
+            std::vector<wchar_t> buf(used / sizeof(wchar_t));
+            if (!EvtRender(NULL, hEvents[i], EvtRenderEventXml, used, &buf[0], &used, &count)) {
+                if (g_dev_debug) {
+                    std::wcerr << L"[!] Failed to render event XML for " << id << ": " << GetLastError() << L"\n";
+                }
+            }
+
+			std::wstring xml(&buf[0]);
+
+            // extract <TimeCreated SystemTime='2026-05-26T19:11:41.2621732Z'/>
+			std::wstring timestamp = L"0000-00-00T00:00:00.000Z";
+
+			size_t time_pos = xml.find(L"<TimeCreated SystemTime='");
+            if (time_pos != std::wstring::npos) {
+                time_pos += 25; // length of <TimeCreated SystemTime='
+                size_t end_time_pos = xml.find(L"'/>", time_pos);
+                if (end_time_pos != std::wstring::npos) {
+                    timestamp = xml.substr(time_pos, end_time_pos - time_pos);
+                }
+			} else {
+                if (g_dev_debug) {
+                    std::wcerr << L"[!] Failed to find TimeCreated in event XML for " << id << L"\n";
+                }
+			}
+
+			// extract relevant fields
+			std::wstring message = L"";
+
+            for (const auto& name : to_extract) {
+                size_t pos = xml.find(L"<Data Name='" + name + L"'>");
+                if (pos != std::wstring::npos) {
+                    pos += 14 + name.size(); // length of <Data Name=''>
+                    size_t end_pos = xml.find(L"</Data>", pos);
+                    if (end_pos != std::wstring::npos) {
+                        if (!message.empty()) {
+                            message += L", ";
+						}
+                        message += name + L": " + xml.substr(pos, end_pos - pos);
+                    }
+                }
+                else {
+                    if (g_dev_debug) {
+                        std::wcerr << L"[!] Failed to find " << name << L" in event XML for " << id << L"\n";
+					}
+                }
+            }
+
+			log += timestamp + L" - " + id + L" - " + event_type_desc + L" : " + message + L"\n";
+        }
+    }
+
+    EvtClose(hResults);
+
+    if (log.empty()) {
+        log = L"[-] No relevant events found in " + MDE_log + L" (" + id + L") " + event_type_desc + L"\n";
+	}
+    return log;
+}
+
+/* get relevant events from MDE log after last attack start */
+std::wstring get_mde_eventlog() {
+	std::wstring detections = L"[+] Events from " + MDE_log + L":\n";
+
+    // https://learn.microsoft.com/en-us/defender-endpoint/troubleshoot-microsoft-defender-antivirus#event-id-1116
+	detections += get_defender_events(1116, { L"Source Name", L"Threat Name", L"Severity Name", L"Path" }, L"MALWAREPROTECTION_STATE_MALWARE_DETECTED");
+
+    // https://learn.microsoft.com/en-us/defender-endpoint/troubleshoot-microsoft-defender-antivirus#event-id-1117
+    detections += get_defender_events(1117, { L"Source Name", L"Threat Name", L"Severity Name", L"Action Name", L"Path" }, L"MALWAREPROTECTION_STATE_MALWARE_ACTION_TAKEN");
+
+	return detections;
+}
+
 /* reset attack tracking variables (with a delay) */
-void reset_attack_tracking_threaded() {
+void reset_attack_tracking_and_print_evtl_threaded() {
     // private helper function to be threaded
     auto reset = []() {
         std::this_thread::sleep_for(std::chrono::seconds(tracking_shutdown_delay));
         g_attack_pid = 0;
         g_attack_main_tid = 0;
+        if (g_autodetect_attack_path) {
+            g_attack_path = L"";
+		}
         if (g_debug) {
             std::wcout << L"[+] Reset attack tracking variables after attack termination\n";
         }
-	};
-	std::thread(reset).detach();
-}
-
-/* TODO get relevant events from defender event log */
-std::wstring get_mde_eventlog() {
-    // return lines as eventid:message:description
-	std::wstring log = MDE_log + L" events:\n";
-    bool found_events = false;
-	// std::vector<std::wstring> events = get_mde_events_after(g_last_attack_start);
-	// for (const auto& e : events) {
-    // if (e.id >= 1000 && e.id < 2000) {
-	// log += std::to_wstring(e.id) + L":" + e.message + L":" + e.description + L"\n";
-    // found_events = true;
-    // }
-    if (!found_events && g_debug) {
-        log = L"[-] No relevant events found in " + MDE_log;
-    }
-    return log;
+        // wait again for mde event log
+        std::this_thread::sleep_for(std::chrono::seconds(tracking_shutdown_delay));
+        std::wcout << get_mde_eventlog();
+        };
+    std::thread(reset).detach();
 }
