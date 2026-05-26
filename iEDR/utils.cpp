@@ -248,8 +248,8 @@ void reset_attack_tracking_and_print_evtl_threaded() {
         std::this_thread::sleep_for(std::chrono::seconds(tracking_shutdown_delay));
         g_attack_pid = 0;
         g_attack_main_tid = 0;
-        if (g_autodetect_attack_path) {
-            g_attack_path = L"";
+        if (g_autodetect_attack_path) { // reset to directory to track next attacks
+            g_attack_path = g_attack_path.substr(0, g_attack_path.find_last_of(L'\\') + 1);
 		}
         if (g_debug) {
             std::wcout << L"[+] Reset attack tracking variables after attack termination\n";
