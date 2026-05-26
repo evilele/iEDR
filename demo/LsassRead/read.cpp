@@ -7,7 +7,6 @@
 #include <sstream>
 #include <vector>
 
-#pragma comment(lib, "dbghelp.lib")
 
 typedef BOOL(WINAPI* MyDumpPtr)(
     HANDLE        hProcess,
