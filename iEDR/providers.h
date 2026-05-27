@@ -23,9 +23,9 @@ struct FilterValue {
     };
 
     // Constructors for automatic type detection
-    FilterValue(int v) : type(INT_FILTER), i_val(v) {}
-    FilterValue(const int* v) : type(INT_PTR_FILTER), i_ptr(v) {}
-    FilterValue(const std::wstring* v) : type(WSTR_PTR_FILTER), s_ptr(v) {}
+    FilterValue(int v) : type(INT_FILTER), i_val(v) {} // constant or any filter
+    FilterValue(const int* v) : type(INT_PTR_FILTER), i_ptr(v) {} // pid etc. filter
+	FilterValue(const std::wstring* v) : type(WSTR_PTR_FILTER), s_ptr(v) {} // path etc. filter
 
     int get_int() const {
         return (type == INT_PTR_FILTER) ? *i_ptr : i_val;
@@ -37,7 +37,7 @@ struct FilterValue {
 };
 
 struct operation {
-    enum class Type { EQUALS, PATH_EQUALS, PID_STR_EQUALS, CONTAINS_STR, CONTAINS_FLAG };
+    enum class Type { EQUALS, PATH_EQUALS, PID_STR_EQUALS, CONTAINS_STR, CONTAINS_FLAG, ANY };
     const Type type;
 };
 
@@ -53,7 +53,7 @@ struct event {
     const int* originating_pid; // optional originating PID filter
     const std::vector<filter> filters; // field filters
     const std::wstring output;
-	const std::wstring add_output_field; // optional output from field value, must also be in filters
+	const std::wstring add_output_field; // optional output from field value, field must also be in filters but can also be ANY (not filtered)
 };
 
 struct events {

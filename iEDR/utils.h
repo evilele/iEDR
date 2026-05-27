@@ -3,7 +3,7 @@
 #include <string>
 
 const std::wstring MDE_log = L"Microsoft-Windows-Windows Defender/Operational";
-const std::wstring MDE_name = L"MsMpEng.exe";
+const std::wstring MsMpEng = L"MsMpEng.exe";
 const int tracking_shutdown_delay = 3; // seconds to keep tracking after attack end to catch any remaining events
 
 enum verbosity_level {
@@ -17,7 +17,6 @@ extern bool g_dev_debug;
 extern verbosity_level g_level;
 
 extern std::wstring g_attack_path;
-extern bool g_autodetect_attack_path;
 extern int g_attack_pid;
 extern int g_edr_pid;
 extern int g_attack_main_tid;

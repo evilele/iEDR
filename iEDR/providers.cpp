@@ -7,12 +7,14 @@
 #include "providers.h"
 #include "utils.h"
 
+
+// values to filter on must be variables (C++?)
 const std::wstring c_get_hashes = L"GetHashes";
 const std::wstring c_build_report = L"spynet_report::build_report";
+const std::wstring c_usn_cache_name = L"USN Cache";
 
-// todo define global start and stop event(s) of recordings?
+/* providers to track */
 
-// the providers to track
 /* https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Windows-Kernel-Process.tsv
     1 ProcessStart
     2 ProcessStop
@@ -26,8 +28,8 @@ event kp1 = { 1, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_at
 event kp2 = { 2, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"STOP --- Attack process stopped" };
 event kp3 = { 3, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process started a thread" };
 event kp4 = { 4, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process stopped a thread" };
-event kp5 = { 5, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
-event kp6 = { 6, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"" };
+event kp5 = { 5, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process loaded an image", L"ImageName" };
+event kp6 = { 6, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process unloaded an image", L"ImageName" };
 event kp11 = { 11, nullptr, { {L"FrozenProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process frozen" };
 provider kernel_process_provider = {
     kernel_process_provider_name,
@@ -44,7 +46,6 @@ provider kernel_process_provider = {
 */
 event kf10 = { 10, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (name) created" };
 event kf30 = { 30, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
-// todo: event kf30 is not matched in auto-detect mode, no dedicated start message
 provider kernel_file_provider = {
     kernel_file_provider_name,
     {
@@ -54,7 +55,7 @@ provider kernel_file_provider = {
     }
 };
 
-// todo this could also be filtered, for Microsoft ips for example
+// todo this could also be filtered for Microsoft IPs
 /* https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Windows-Kernel-Network.tsv
     12 TCPIPConnectionattempted
     15 TCPIPConnectionaccepted
@@ -94,10 +95,7 @@ provider kernel_network_provider = {
 */
 event ka3 = { 3, nullptr, { {L"LinkSourceName", {operation::Type::EQUALS}, &g_attack_path} } };
 event ka4 = { 4, nullptr, { { } } };
-event ka5 = { 5, &g_edr_pid, {
-    {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pid} , 
-    {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x400} ,
-}, MDE_name + L" opened attack process with VM read access:",  L"DesiredAccess" };
+event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pid}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x400} }, MsMpEng + L" opened attack process with VM read access:",  L"DesiredAccess" };
 event ka6 = { 6, nullptr, { {L"ThreadId", {operation::Type::EQUALS}, &g_attack_main_tid} } };
 provider kernel_api_provider = {
     kernel_api_audit_provider_name,
@@ -108,7 +106,7 @@ provider kernel_api_provider = {
     }
 };
 
-/*  https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Antimalware-Engine.tsv
+/* https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Antimalware-Engine.tsv
 * https://blog.levi.wiki/post/2026-01-09-defender-detection-mechanisms
 */
 // minimal
@@ -122,8 +120,11 @@ event am43spy = { 43, nullptr, { {L"Name", {operation::Type::PATH_EQUALS}, &g_at
 // relevant
 event am30 = { 30, nullptr, { {L"FilePath", {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack file ( ? ) started" };
 event am32 = { 32, nullptr, { {L"FilePath", {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack proc (loaded modules scan) started" };
-event am36 = { 36, nullptr, { {L"FileName", {operation::Type::EQUALS}, &g_attack_path} } };
-event am44 = { 44, nullptr, {  } }; // meta store task (stores identifiers)
+event am35 = { 35, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0}}, L"Add (part of) attack to MOAC cache", L"Result"};
+event am36 = { 36, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0} }, L"Lookup (part of) attack in MOAC cache", L"Result"};
+event am37 = { 37, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0} }, L"Revoke (part of) attack from MOAC cache", L"Result"};
+event am38 = { 38, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"CacheName", {operation::Type::EQUALS}, &c_usn_cache_name}, {L"Result", {operation::Type::ANY}, 0}}, L"Lookup (part of) attack in USN Cache", L"Result"};
+event am39 = { 39, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"CacheName", {operation::Type::EQUALS}, &c_usn_cache_name}, {L"Result", {operation::Type::ANY}, 0} }, L"Lookup (part of) attack in ", L"Result" };
 
 // all
 event am2 = { 2, nullptr, {  } };
@@ -136,7 +137,7 @@ event am16 = { 16, nullptr, {  } };
 event am26 = { 26, nullptr, {  } };
 event am31 = { 31, nullptr, {  } };
 event am33 = { 33, nullptr, {  } };
-event am38 = { 38, nullptr, {  } };
+event am44 = { 44, nullptr, {  }, L"Stored metadata" }; // meta store task (stores identifiers)
 event am46 = { 46, nullptr, {  } };
 event am53 = { 53, nullptr, {  } };
 event am59 = { 59, nullptr, {  } };
@@ -161,8 +162,8 @@ provider antimalware_provider = {
     antimalware_provider_name,
     {
         { am1path, am1proc, am5, am7, am43sig, am43spy },
-        { am1path, am1proc, am5, am7, am30, am32, am36, am43sig, am43spy, am44, am46 },
-        { am1path, am1proc, am2, am3, am4, am5, am6, am11, am15, am16, am26, am30, am31, am32, am33, am36, am38, am43sig, am43spy, am44, am53, am59, am60, am62, am67, am70, am71, am72, am73, am74, am95, am103, am104, am105, am109, am110, am111, am112 }
+        { am1path, am1proc, am5, am7, am30, am32, am35, am36, am37, am38, am39, am43sig, am43spy },
+        { am1path, am1proc, am2, am3, am4, am5, am6, am11, am15, am16, am26, am30, am31, am32, am33, am35, am36, am37, am38, am39, am43sig, am43spy, am44, am53, am59, am60, am62, am67, am70, am71, am72, am73, am74, am95, am103, am104, am105, am109, am110, am111, am112 }
     }
 };
 

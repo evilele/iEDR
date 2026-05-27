@@ -31,17 +31,12 @@ bool matches(const std::wstring& actual, const filter& f) {
     switch (f.op.type) {
     case operation::Type::EQUALS:
         return actual == expected;
-    case operation::Type::PATH_EQUALS: {
-        /* TODO remove?
-        if (g_autodetect_attack_path && g_attack_path.find_last_of(L'\\') == g_attack_path.length() - 1) { // in autodetect mode, no concrete path set yet
-			std::wstring actual_folderpath = actual.substr(0, actual.find_last_of(L'\\'));
-            return filepath_match(actual_folderpath, expected, false);
-        }
-        */
+    case operation::Type::PATH_EQUALS:
 		return filepath_match(actual, expected);
-    }
     case operation::Type::CONTAINS_STR:
         return actual.find(expected) != std::wstring::npos;
+	case operation::Type::ANY:
+        return true;
     default:
         return false;
     }
@@ -52,6 +47,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
         std::wstring provider_name = schema.provider_name();
         int id = schema.event_id();
 
+        // todo: also track processes started by the attack (?)
         // track attack process start and stop
         if (provider_name == kernel_process_provider_name) {
 
@@ -62,30 +58,14 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 try {
                     // the attack path / folder to check against, depending on auto-detect mode
                     std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
-                    std::wstring to_check = image_name;
 
-                    // remove any.exe from C:\Users\Public\any.exe to compare the folder path for auto-detect mode
-                    if (g_autodetect_attack_path) {
-                        size_t last_backslash = image_name.find_last_of(L'\\');
-                        if (last_backslash != std::wstring::npos) {
-                            to_check = image_name.substr(0, last_backslash + 1);
-                        }
-                    }
-
-                    if (filepath_match(to_check, g_attack_path)) {
+                    if (filepath_match(image_name, g_attack_path)) {
                         try {
                             g_attack_pid = parser.parse<uint32_t>(L"ProcessID");
 							GetSystemTime(&g_last_attack_start);
 
                             if (g_debug) {
                                 std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
-                            }
-
-                            if (g_autodetect_attack_path) {
-                                g_attack_path = image_name; // set to actual file path for auto-detect mode
-                                if (g_debug) {
-                                    std::wcout << L"[+] Auto-detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
-                                }
                             }
                         }
                         catch (const std::exception& e) {
@@ -188,8 +168,8 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 int originating_pid = schema.process_id();
                 if (*e.originating_pid != originating_pid) {
                     if (g_dev_debug) {
-                        std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.event_name()
-                            << "." << schema.task_name() << L" : (type=uint) process_id" << L" actual: " << originating_pid << L"\n";
+                        std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.task_name()
+                            << "." << schema.opcode_name() << L" : (type=uint) process_id" << L" actual: " << originating_pid << L"\n";
                     }
                     continue; // skip field parsing if originating PID filter already fails
                 }
@@ -202,8 +182,8 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
             for (const auto& f : e.filters) {
                 bool current_match = false;
                 int type = -1;
-                int last_int = -13371337;
-                std::wstring last_wstr = L"dummypl4ceholder1234";
+                int last_int = 0; // dev debug
+                std::wstring last_wstr = L""; // dev debug
 
                 try {
                     // get property of given event filter
@@ -216,8 +196,8 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     }
                     if (type == -1) { // not found
                         if (g_dev_debug) {
-                            std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.event_name()
-                                << "." << schema.task_name() << L" : field '" << f.field_name << L"' not found in event properties\n";
+                            std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.task_name()
+                                << "." << schema.opcode_name() << L" : field '" << f.field_name << L"' not found in event properties\n";
                         }
                         current_match = false;
                         break; // field not found, mark filter as failed and skip to next filter
@@ -293,12 +273,12 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 
                 if (!current_match) {
                     if (g_dev_debug) {
-                        std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." <<  schema.event_name()
-                            << "." << schema.task_name() << L" : (type=" << type << L") " << f.field_name;
-                        if (last_int != -13371337) {
+                        std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." <<  schema.task_name()
+                            << "." << schema.opcode_name() << L" : (type=" << type << L") " << f.field_name;
+                        if (last_int != 0) {
                             std::wcout << L" actual: " << last_int << L"\n";
                         }
-                        else if (last_wstr.length() && std::wcscmp(last_wstr.c_str(), L"dummypl4ceholder1234") != 0) {
+                        else if (!last_wstr.empty()) {
                             std::wcout << L" actual: " << last_wstr << L"\n";
                         }
                         else {
@@ -320,7 +300,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 
                 // if no specific output defined for this event, output generic info
                 if (e.output.empty()) { 
-                    std::wcout << L"(no interpretation defined for event)";
+                    std::wcout << id << L"." << schema.task_name() << "." << schema.opcode_name() << L" from " << provider_name << L" (no interpretation defined for event)";
                 }
                 else { // output defined interpretation
                     std::wcout << e.output;

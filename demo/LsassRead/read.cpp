@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
     auto ae_calc_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_ae_calc - start_ae_calc).count();
 
     std::cout << "Reader started with PID " << GetCurrentProcessId() << "\n";
-    std::cout << "Press ENTER to create a process snapshot";
+    std::cout << "Press ENTER to create a process snapshot" << std::flush;
 	std::cin.get();
 
     // create a snapshot of running procs
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::cout << "Press ENTER to resolve dump functions and decondition";
+    std::cout << "Press ENTER to resolve dump functions and decondition" << std::flush;
 	std::cin.get();
 
     // resolving functions
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     }
 
     // init strings
-	std::cout << "Press ENTER to find lsass and dump";
+	std::cout << "Press ENTER to find lsass and dump" << std::flush;
 	std::cin.get();
 
     // https://cyberchef.org/#recipe=Unescape_string()Encode_text('UTF-16LE%20(1200)')XOR(%7B'option':'UTF8','string':'AB'%7D,'Standard',false)To_Hex('0x%20with%20comma',0)&input=bHNhc3MuZXhlXDA

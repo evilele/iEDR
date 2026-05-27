@@ -18,7 +18,6 @@ bool g_dev_debug = false;
 verbosity_level g_level = MINIMAL;
 
 std::wstring g_attack_path;
-bool g_autodetect_attack_path = false; // TODO remove this, stupid
 int g_attack_pid = 0;
 int g_edr_pid = 0;
 int g_attack_main_tid = 0;
@@ -55,9 +54,9 @@ int main(int argc, char* argv[]) {
     options.add_options()
         ("h,help", "Print usage")
         ("d,debug", "Enable debug output", cxxopts::value<bool>()->default_value("false"))
-		("v,verbose", "Enable development debug output", cxxopts::value<bool>()->default_value("false"))
+		("v,verbose", "Enable verbose development debug output", cxxopts::value<bool>()->default_value("false"))
         ("a,attack", "The file path of the attack to trace", cxxopts::value<std::string>()) // somehow wstring breaks cxxopts
-        ("l,level", "The verbosity level, between 0 (minimal) and 3 (verbose)", cxxopts::value<int>()->default_value("0"));
+        ("l,level", "The trace level, between 0 (minimal) and 2 (verbose) events", cxxopts::value<int>()->default_value("0"));
 
     cxxopts::ParseResult result;
     try {
@@ -75,7 +74,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     if (result.count("attack") == 0) {
-        std::cerr << L"[!] Attack path to track is required.\n";
+        std::wcerr << L"[!] Attack path to track is required.\n";
         std::cout << options.help() << "\n";
         return 1;
     }
@@ -86,8 +85,8 @@ int main(int argc, char* argv[]) {
             return 1;
 		}
         if (g_attack_path[g_attack_path.length() - 1] == (L'\\')) {
-            g_autodetect_attack_path = true;
-			std::wcout << L"[+] Tracking EDR actions against all files in directory: " << g_attack_path << L"\n";
+			std::wcerr << L"[!] Specify a specific filepath not a folder path: " << g_attack_path << L"\n";
+            return 1;
         }
         else {
             std::wcout << L"[+] Tracking EDR actions against attack: " << g_attack_path << L"\n";
@@ -116,13 +115,13 @@ int main(int argc, char* argv[]) {
     }
     std::wcout << L"[+] Verbosity level set to: " << g_level << L"\n";
 
-	g_edr_pid = get_process_id_by_name(MDE_name);
+	g_edr_pid = get_process_id_by_name(MsMpEng);
     if (g_edr_pid == 0) {
-        std::wcerr << L"[!] Failed to find " << MDE_name << L" process.\n";
+        std::wcerr << L"[!] Failed to find " << MsMpEng << L" process.\n";
         return 1;
 	}
     if (g_debug) {
-        std::wcout << L"[+] Found " << MDE_name << L" process with PID=" << g_edr_pid << L"\n";
+        std::wcout << L"[+] Found " << MsMpEng << L" process with PID=" << g_edr_pid << L"\n";
 	}
 
     // start ETW traces for monitoring
@@ -149,8 +148,6 @@ int main(int argc, char* argv[]) {
 	std::cin.get();
 	stop_etw_traces();
 	std::wcout << L"[+] ETW traces stopped, exiting...\n";
-
-    // todo print end of analysis
 
     return 0;
 }

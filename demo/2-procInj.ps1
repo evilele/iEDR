@@ -1,0 +1,13 @@
+Start-Process ".\iEDR\x64\Release\iEDR.exe" -Args "-a C:\Users\Public\Downloads\ProcInject.exe"
+
+$_= Read-Host "Wait for iEDR startup..."
+
+$s = "$PSScriptRoot\ProcInject\ProcInject.exe"
+$p = "C:\Users\Public\Downloads\ProcInject.exe"
+if (Test-Path $p) {
+	rm $p -Force
+}
+cp $s $p
+Write-Host "Copied EXE"
+Read-Host "Press ENTER to start EXE"
+Start-Process $p -NoNewWindow -Wait
