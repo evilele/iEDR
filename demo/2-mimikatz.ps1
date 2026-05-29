@@ -1,7 +1,7 @@
 $r = $PSScriptRoot
 $s = "$PSScriptRoot\mimikatz.exe"
 $p = "C:\Users\Public\Downloads\mimikatz.exe"
-Start-Process "$r\..\iEDR\x64\Release\iEDR.exe" -Args "-a $p"
+Start-Process "$r\..\iEDR.exe" -Args "-a $p"
 
 $_= Read-Host "Wait for iEDR startup..."
 if (Test-Path $p) {

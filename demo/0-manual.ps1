@@ -1,3 +1,4 @@
-Write-Host ".\iEDR\x64\Release\iEDR.exe -a C:\Users\Public\Downloads\cmd.exe"
-Write-Host "cp C:\Windows\System32\cmd.exe C:\Users\Public\Downloads\cmd.exe"
-Write-Host "C:\Users\Public\Downloads\cmd.exe"
+$r = $PSScriptRoot
+Write-Host "$r\..\iEDR.exe -a C:\Users\Public\Downloads\calc.exe"
+Write-Host "cp C:\Windows\System32\calc.exe C:\Users\Public\Downloads\calc.exe"
+Write-Host "C:\Users\Public\Downloads\calc.exe"
