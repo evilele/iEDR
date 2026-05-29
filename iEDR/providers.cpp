@@ -45,13 +45,17 @@ provider kernel_process_provider = {
     30 CreateNewFile
 */
 event kf10 = { 10, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (name) created" };
+event kf11 = { 11, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (disposition) deleted" };
+event kf26 = { 26, nullptr, { {L"FilePath", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"DELETE --- Attack file deleted", };
+event kf26_any = { 26, nullptr, { {L"FilePath", {operation::Type::ANY}, 0} }, L"Deleted", L"FilePath" };
 event kf30 = { 30, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
+event kf30_any = { 30, nullptr, { {L"FileName", {operation::Type::ANY}, 0} }, L"Created", L"FileName" };
 provider kernel_file_provider = {
     kernel_file_provider_name,
     {
-        { kf30 },
-        { kf10, kf30 },
-        { kf10, kf30 }
+        { kf26, kf30 },
+        { kf10, kf11, kf26, kf30 },
+        { kf10, kf11, kf26, kf26_any, kf30 }
     }
 };
 

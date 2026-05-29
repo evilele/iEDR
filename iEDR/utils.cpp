@@ -150,9 +150,9 @@ std::wstring system_time_to_iso(const SYSTEMTIME& st) {
 /* parse defender event type */
 std::wstring get_defender_events(int event_id, std::vector<std::wstring> to_extract, std::wstring event_type_desc) {
 	std::wstring id = std::to_wstring(event_id);
-    std::wstring after_time = system_time_to_iso(g_last_attack_start);
+    std::wstring after_time = system_time_to_iso(g_last_attack_store);
 
-    // filter ID 1116 and System Time > g_last_attack_start
+    // filter ID 1116 and System Time > g_last_attack_store
     std::wstring query = L"*[System[(EventID = " + id + L") and TimeCreated[@SystemTime >= '" + after_time + L"']]]";
     EVT_HANDLE hResults = EvtQuery(NULL, MDE_log.c_str(), query.c_str(), EvtQueryChannelPath | EvtQueryReverseDirection);
     if (!hResults) {
@@ -245,15 +245,22 @@ std::wstring get_mde_eventlog() {
 void reset_attack_tracking_and_print_evtl_threaded() {
     // private helper function to be threaded
     auto reset = []() {
+
+        // wait to catch events after process shutdown
         std::this_thread::sleep_for(std::chrono::seconds(tracking_shutdown_delay));
         g_attack_pid = 0;
         g_attack_main_tid = 0;
         if (g_debug) {
             std::wcout << L"[+] Reset attack tracking variables after attack termination\n";
         }
+
         // wait again for mde event log
         std::this_thread::sleep_for(std::chrono::seconds(tracking_shutdown_delay));
         std::wcout << get_mde_eventlog();
+
+		// and reset last attack store time to be able to track next attack
+        GetSystemTime(&g_last_attack_store);
+        g_last_attack_store.wSecond -= tracking_shutdown_delay * 2;
         };
     std::thread(reset).detach();
 }

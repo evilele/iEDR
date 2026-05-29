@@ -20,6 +20,8 @@ bool matches(long long actual, const filter& f) {
         std::wstring expected_str = L"pid:" + std::to_wstring(expected);
         return std::to_wstring(actual) == expected_str;
 	}
+    case operation::Type::ANY:
+        return true;
     default:
         return false;
     }
@@ -56,14 +58,12 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 krabs::parser parser(schema);
 
                 try {
-                    // the attack path / folder to check against, depending on auto-detect mode
+                    // the attack path to check against
                     std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
 
                     if (filepath_match(image_name, g_attack_path)) {
                         try {
                             g_attack_pid = parser.parse<uint32_t>(L"ProcessID");
-							GetSystemTime(&g_last_attack_start);
-
                             if (g_debug) {
                                 std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
                             }
@@ -147,6 +147,48 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 }
             }
         }
+
+        // track attack file creation & deletion
+        if (provider_name == kernel_file_provider_name) { 
+            if (id == 30) { // CreateNewFile event
+                krabs::parser parser(schema);
+                try {
+                    std::wstring file_path = parser.parse<std::wstring>(L"FileName");
+                    if (filepath_match(file_path, g_attack_path)) {
+                        if (g_debug) {
+                            std::wcout << L"[+] Detected creation of attack file: " << file_path << L"\n";
+                        }
+                        GetSystemTime(&g_last_attack_store);
+						g_last_attack_store.wSecond -= tracking_startup_buffer; // buffer when storing and immidately deleting
+                    }
+                }
+                catch (const std::exception& e) {
+                    if (g_dev_debug) {
+                        std::wcerr << L"[!] Error parsing CreateNewFile event for attack file creation tracking: " << string_to_wstring(e.what()) << L"\n";
+                    }
+                }
+			}
+
+            if (id == 26) { // FileDelete event
+                krabs::parser parser(schema);
+                try {
+                    std::wstring file_path = parser.parse<std::wstring>(L"FilePath");
+                    if (filepath_match(file_path, g_attack_path)) {
+                        if (g_debug) {
+                            std::wcout << L"[+] Detected deletion of attack file: " << file_path << L"\n";
+                        }
+                        if (g_attack_pid == 0) { // if attack not started yet, also print malware report
+                            reset_attack_tracking_and_print_evtl_threaded();
+                        }
+                    }
+                }
+                catch (const std::exception& e) {
+                    if (g_dev_debug) {
+                        std::wcerr << L"[!] Error parsing FileDelete event for attack file deletion tracking: " << string_to_wstring(e.what()) << L"\n";
+                    }
+                }
+            }
+		}
 
         // 1.check if this provider is interesting
         auto prov_it = providers_to_track.find(provider_name);

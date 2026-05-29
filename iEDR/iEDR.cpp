@@ -21,7 +21,18 @@ std::wstring g_attack_path;
 int g_attack_pid = 0;
 int g_edr_pid = 0;
 int g_attack_main_tid = 0;
-SYSTEMTIME g_last_attack_start = {0};
+SYSTEMTIME g_last_attack_store = {0};
+
+void enable_virtual_terminal_processing() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(hOut, &dwMode)) return;
+
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+}
 
 bool is_admin() {
     BOOL is_admin = FALSE;
@@ -40,6 +51,7 @@ bool is_admin() {
 }
 
 int main(int argc, char* argv[]) {
+    enable_virtual_terminal_processing();
     std::cout << BANNER;
 
     if (!is_admin()) {
@@ -131,21 +143,30 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // temporary solution, wait for g_trace_started == true and exit again
-    int wait_counter = 0;
+    std::wcout << L"[+] Starting ETW traces" << std::flush;
     while (!g_trace_started) {
-        if (g_debug && wait_counter % 50 == 0) {
-            std::wcout << L"[+] Waiting for ETW traces to start...\n";
-		}
-        Sleep(100);
-		wait_counter++;
+        std::wcout << L"." << std::flush;
+        Sleep(300);
     }
+    std::wcout << L"\n";
+    Sleep(1000); // wait for all traces
 
 	// wait until user presses enter to stop traces and exit
 	std::wcout << L"[+] Traces ready, store attack at " << g_attack_path << L"\n";
 
-    std::wcout << L"[+] Press Enter to stop ETW traces and exit...\n";
-	std::cin.get();
+    std::wcout << L"[+] Enter STOP to stop ETW traces and exit...\n";
+    std::wcout << L"[+] Enter RESET to generate a report and continue...\n";
+	std::string input;
+	while (true) {
+		std::getline(std::cin, input);
+		if (input == "STOP") {
+			break;
+		}
+        if (input == "RESET") {
+            std::wcout << L"[+] Generating report...\n";
+            reset_attack_tracking_and_print_evtl_threaded();
+		}
+	}
 	stop_etw_traces();
 	std::wcout << L"[+] ETW traces stopped, exiting...\n";
 

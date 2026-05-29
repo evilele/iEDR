@@ -4,6 +4,7 @@
 
 const std::wstring MDE_log = L"Microsoft-Windows-Windows Defender/Operational";
 const std::wstring MsMpEng = L"MsMpEng.exe";
+const int tracking_startup_buffer = 3; // seconds before the attack store to include malware reports
 const int tracking_shutdown_delay = 3; // seconds to keep tracking after attack end to catch any remaining events
 
 enum verbosity_level {
@@ -20,7 +21,7 @@ extern std::wstring g_attack_path;
 extern int g_attack_pid;
 extern int g_edr_pid;
 extern int g_attack_main_tid;
-extern SYSTEMTIME g_last_attack_start;
+extern SYSTEMTIME g_last_attack_store;
 
 bool filepath_match(std::wstring, std::wstring);
 std::string wchar_to_string(const wchar_t*);
