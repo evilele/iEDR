@@ -147,14 +147,36 @@ std::wstring system_time_to_iso(const SYSTEMTIME& st) {
     return wss.str();
 }
 
+SYSTEMTIME add_buffer(SYSTEMTIME base_time, ULONGLONG seconds) {
+    // copy to FILETIME
+    FILETIME ft;
+    SystemTimeToFileTime(&base_time, &ft);
+
+    ULARGE_INTEGER uli;
+    uli.LowPart = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+
+    // add the specified number of seconds (converted to 100-nanosecond intervals)
+    uli.QuadPart += seconds * 10000000ULL;
+
+    // save as FILETIME
+    ft.dwLowDateTime = uli.LowPart;
+    ft.dwHighDateTime = uli.HighPart;
+
+	// convert back to SYSTEMTIME
+    SYSTEMTIME result;
+    FileTimeToSystemTime(&ft, &result);
+    return result;
+}
+
 /* parse defender event type */
 std::wstring get_defender_events(int event_id, std::vector<std::wstring> to_extract, std::wstring event_type_desc) {
 	std::wstring id = std::to_wstring(event_id);
-    std::wstring after_time = system_time_to_iso(g_last_attack_store);
+    std::wstring after_time = system_time_to_iso(add_buffer(g_last_attack_store, tracking_start_buffer));
 
     // filter ID 1116 and System Time > g_last_attack_store
     std::wstring query = L"*[System[(EventID = " + id + L") and TimeCreated[@SystemTime >= '" + after_time + L"']]]";
-    EVT_HANDLE hResults = EvtQuery(NULL, MDE_log.c_str(), query.c_str(), EvtQueryChannelPath | EvtQueryReverseDirection);
+    EVT_HANDLE hResults = EvtQuery(NULL, MDE_log.c_str(), query.c_str(), EvtQueryChannelPath | EvtQueryForwardDirection);
     if (!hResults) {
         if (g_dev_debug) {
             std::wcerr << L"[!] Failed to query events for " << id << L" in " << MDE_log << L": " << GetLastError() << L"\n";
@@ -260,7 +282,6 @@ void reset_attack_tracking_and_print_evtl_threaded() {
 
 		// and reset last attack store time to be able to track next attack
         GetSystemTime(&g_last_attack_store);
-        g_last_attack_store.wSecond -= tracking_shutdown_delay * 2;
-        };
+    };
     std::thread(reset).detach();
 }

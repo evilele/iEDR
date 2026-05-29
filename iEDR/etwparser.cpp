@@ -159,7 +159,6 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                             std::wcout << L"[+] Detected creation of attack file: " << file_path << L"\n";
                         }
                         GetSystemTime(&g_last_attack_store);
-						g_last_attack_store.wSecond -= tracking_startup_buffer; // buffer when storing and immidately deleting
                     }
                 }
                 catch (const std::exception& e) {

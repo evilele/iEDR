@@ -4,7 +4,7 @@
 
 const std::wstring MDE_log = L"Microsoft-Windows-Windows Defender/Operational";
 const std::wstring MsMpEng = L"MsMpEng.exe";
-const int tracking_startup_buffer = 3; // seconds before the attack store to include malware reports
+const int tracking_start_buffer = -3; // seconds to look back in event logs at attack start to catch any early events
 const int tracking_shutdown_delay = 3; // seconds to keep tracking after attack end to catch any remaining events
 
 enum verbosity_level {
