@@ -134,7 +134,7 @@ int get_process_id_by_name(const std::wstring& proc) {
     return pid;
 }
 
-/* ticks to iso timestamp YYYY-MM-DDTHH:MM:SS.MMMZ */
+/* systemtime to iso timestamp YYYY-MM-DDTHH:MM:SSZ */
 std::wstring system_time_to_iso(const SYSTEMTIME& st) {
     std::wstringstream wss;
     wss << std::setfill(L'0')
@@ -145,6 +145,19 @@ std::wstring system_time_to_iso(const SYSTEMTIME& st) {
         << std::setw(2) << st.wMinute << L":"
         << std::setw(2) << st.wSecond << L"Z";
     return wss.str();
+}
+
+/* wstring time YYYY-MM-DDTHH:MM:SS.MMMMMMMZ to short iso HH:MM:SS.MMMMMMM */
+std::wstring iso_to_short_iso(std::wstring iso_time) {
+    size_t t_pos = iso_time.find(L'T');
+    if (t_pos == std::wstring::npos) {
+        return L"00:00:00.0000000";
+    }
+    std::wstring short_iso = iso_time.substr(t_pos+1);
+    if (!short_iso.empty() && short_iso.back() == L'Z') {
+        short_iso.pop_back();
+    }
+    return short_iso;
 }
 
 SYSTEMTIME add_buffer(SYSTEMTIME base_time, ULONGLONG seconds) {
@@ -209,6 +222,7 @@ std::wstring get_defender_events(int event_id, std::vector<std::wstring> to_extr
                 size_t end_time_pos = xml.find(L"'/>", time_pos);
                 if (end_time_pos != std::wstring::npos) {
                     timestamp = xml.substr(time_pos, end_time_pos - time_pos);
+                    timestamp = iso_to_short_iso(timestamp);
                 }
 			} else {
                 if (g_dev_debug) {
@@ -238,14 +252,14 @@ std::wstring get_defender_events(int event_id, std::vector<std::wstring> to_extr
                 }
             }
 
-			log += timestamp + L" - " + id + L" - " + event_type_desc + L" : " + message + L"\n";
+			log += timestamp + L": " + id + L" - " + event_type_desc + L" - " + message + L"\n";
         }
     }
 
     EvtClose(hResults);
 
     if (log.empty()) {
-        log = L"[-] No relevant events found in " + MDE_log + L" (" + id + L") " + event_type_desc + L"\n";
+        log = L"00:00:00.0000000: " + id + L" - " + event_type_desc + L" - (none found)\n";
 	}
     return log;
 }
