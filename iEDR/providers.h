@@ -13,6 +13,46 @@ const std::wstring kernel_network_provider_name = L"Microsoft-Windows-Kernel-Net
 const std::wstring kernel_api_audit_provider_name = L"Microsoft-Windows-Kernel-Audit-API-Calls";
 const std::wstring antimalware_provider_name = L"Microsoft-Antimalware-Engine";
 
+// Microsoft-Windows-Kernel-Process
+// {22FB2CD6-0E7B-422B-A0C7-2FAD1FD0E716}
+static const GUID KERNEL_PROCESS_PROVIDER =
+{
+    0x22fb2cd6, 0x0e7b, 0x422b,
+    {0xa0, 0xc7, 0x2f, 0xad, 0x1f, 0xd0, 0xe7, 0x16}
+};
+
+// Microsoft-Windows-Kernel-File
+// {EDD08927-9CC4-4E65-B970-C2560FB5C289}
+static const GUID KERNEL_FILE_PROVIDER =
+{
+    0xedd08927, 0x9cc4, 0x4e65,
+    {0xb9, 0x70, 0xc2, 0x56, 0x0f, 0xb5, 0xc2, 0x89}
+};
+
+// Microsoft-Windows-Kernel-Network
+// {7DD42A49-5329-4832-8DFD-43D979153A88}
+static const GUID KERNEL_NETWORK_PROVIDER =
+{
+    0x7dd42a49, 0x5329, 0x4832,
+    {0x8d, 0xfd, 0x43, 0xd9, 0x79, 0x15, 0x3a, 0x88}
+};
+
+// Microsoft-Windows-Kernel-Audit-API-Calls
+// {E02A841C-75A3-4FA7-AFC8-AE09CF9B7F23}
+static const GUID KERNEL_AUDIT_API_PROVIDER =
+{
+    0xe02a841c, 0x75a3, 0x4fa7,
+    {0xaf, 0xc8, 0xae, 0x09, 0xcf, 0x9b, 0x7f, 0x23}
+};
+
+// Microsoft-Antimalware-Engine
+// {0A002690-3839-4E3A-B3B6-96D8DF868D99}
+static const GUID ANTIMALWARE_ENGINE_PROVIDER =
+{
+    0x0a002690, 0x3839, 0x4e3a,
+    {0xb3, 0xb6, 0x96, 0xd8, 0xdf, 0x86, 0x8d, 0x99}
+};
+
 struct FilterValue {
     enum Type { INT_FILTER, INT_PTR_FILTER, WSTR_PTR_FILTER } type;
 
@@ -72,8 +112,9 @@ struct events {
 };
 
 struct provider {
-    const std::wstring provider_name;
+	const GUID guid;
+	const std::wstring provider_name;
     const events events_to_track;
 };
 
-extern std::map<std::wstring, provider> providers_to_track;
+extern std::vector<provider> providers_to_track;

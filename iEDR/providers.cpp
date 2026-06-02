@@ -32,6 +32,7 @@ event kp5 = { 5, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_
 event kp6 = { 6, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process unloaded an image", L"ImageName" };
 event kp11 = { 11, nullptr, { {L"FrozenProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process frozen" };
 provider kernel_process_provider = {
+	KERNEL_PROCESS_PROVIDER,
     kernel_process_provider_name,
     {
         { kp1, kp2, kp11 },
@@ -51,6 +52,7 @@ event kf26_any = { 26, nullptr, { {L"FilePath", {operation::Type::ANY}, 0} }, L"
 event kf30 = { 30, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
 event kf30_any = { 30, nullptr, { {L"FileName", {operation::Type::ANY}, 0} }, L"Created", L"FileName" };
 provider kernel_file_provider = {
+	KERNEL_FILE_PROVIDER,
     kernel_file_provider_name,
     {
         { kf26, kf30 },
@@ -79,6 +81,7 @@ event kn43 = { 43, nullptr, {  { } } };
 event kn58 = { 58, nullptr, {  { } } };
 event kn59 = { 59, nullptr, {  { } } };
 provider kernel_network_provider = {
+	KERNEL_NETWORK_PROVIDER,
     kernel_network_provider_name,
     {
         { },
@@ -102,6 +105,7 @@ event ka4 = { 4, nullptr, { { } } };
 event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pid}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x400} }, MsMpEng + L" opened attack process with VM read access:",  L"DesiredAccess" };
 event ka6 = { 6, nullptr, { {L"ThreadId", {operation::Type::EQUALS}, &g_attack_main_tid} } };
 provider kernel_api_provider = {
+    KERNEL_AUDIT_API_PROVIDER,
     kernel_api_audit_provider_name,
     {
         { ka5 },
@@ -163,6 +167,7 @@ event am111 = { 111, nullptr, {  } };
 event am112 = { 112, nullptr, {  } };
 
 provider antimalware_provider = {
+    ANTIMALWARE_ENGINE_PROVIDER,
     antimalware_provider_name,
     {
         { am1path, am1proc, am5, am7, am43sig, am43spy },
@@ -171,10 +176,10 @@ provider antimalware_provider = {
     }
 };
 
-std::map<std::wstring, provider> providers_to_track = {
-    {kernel_process_provider.provider_name, kernel_process_provider},
-    {kernel_file_provider.provider_name, kernel_file_provider},
-    {kernel_network_provider.provider_name, kernel_network_provider},
-    {kernel_api_provider.provider_name, kernel_api_provider},
-    {antimalware_provider.provider_name, antimalware_provider}
+std::vector<provider> providers_to_track = {
+    kernel_process_provider,
+    kernel_file_provider,
+    kernel_network_provider,
+    kernel_api_provider,
+    antimalware_provider
 };

@@ -50,6 +50,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
         int id = schema.event_id();
 
         // todo: also track processes started by the attack (?)
+        // todo: refactor tracking (separate function and structs for proc started/stopped and file created/deleted)
         // track attack process start and stop
         if (provider_name == kernel_process_provider_name) {
 
@@ -189,10 +190,14 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
             }
 		}
 
-        // 1.check if this provider is interesting
-        auto prov_it = providers_to_track.find(provider_name);
-        if (prov_it == providers_to_track.end()) return;
-		const provider& prov = prov_it->second;
+		// 1.check if this provider is interesting
+        const auto it = std::find_if(providers_to_track.begin(), providers_to_track.end(), [&](const provider& p) {
+            return p.provider_name == provider_name;
+        });
+        if (it == providers_to_track.end()) {
+            return; // not found
+        }
+        const provider& prov = *it;
 
 		// 2. check if this event ID is interesting, given the provider
         const auto& events = prov.events_to_track.get(g_level);

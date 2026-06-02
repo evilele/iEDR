@@ -19,7 +19,6 @@ krabs::user_trace trace_etw(L"iEDR");
 
 
 void add_trace(const provider& p) {
-    krabs::provider<> provider(p.provider_name);
 	const std::vector<event>& events = p.events_to_track.get(g_level);
 
     if (events.empty()) {
@@ -37,13 +36,14 @@ void add_trace(const provider& p) {
         event_ids.push_back(e.id);
     }
 
+   
     // create filter and store them in global deque
     g_active_filters.emplace_back(event_ids);
     auto& events_filter = g_active_filters.back();
     events_filter.add_on_event_callback(event_callback);
 
 	// create provider and store them in gobal deque
-    g_active_providers.emplace_back(p.provider_name);
+    g_active_providers.emplace_back(p.guid);
     auto& prov = g_active_providers.back();
 
     // appy filter to provider and enable the provider
@@ -62,7 +62,7 @@ void add_trace(const provider& p) {
 DWORD WINAPI t_start_traces(LPVOID param) {
     try {
         for (auto const& p : providers_to_track) {
-            add_trace(p.second);
+            add_trace(p);
         }
         if (g_debug) {
             std::wcout << L"[+] ETW traces registered, starting...\n";

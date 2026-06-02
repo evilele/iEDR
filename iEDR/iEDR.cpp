@@ -149,6 +149,7 @@ int main(int argc, char* argv[]) {
         Sleep(300);
     }
     std::wcout << L"\n";
+    GetSystemTime(&g_last_attack_store); // set time to not get older events before tool startup
     Sleep(1000); // wait for all traces
 
 	// wait until user presses enter to stop traces and exit
