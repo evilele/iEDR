@@ -102,7 +102,7 @@ provider kernel_network_provider = {
 */
 event ka3 = { 3, nullptr, { {L"LinkSourceName", {operation::Type::EQUALS}, &g_attack_path} } };
 event ka4 = { 4, nullptr, { { } } };
-event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pid}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x400} }, MsMpEng + L" opened attack process with VM read access:",  L"DesiredAccess" };
+event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pid}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x10} }, MsMpEng + L" opened attack process with read access:",  L"DesiredAccess" };
 event ka6 = { 6, nullptr, { {L"ThreadId", {operation::Type::EQUALS}, &g_attack_main_tid} } };
 provider kernel_api_provider = {
     KERNEL_AUDIT_API_PROVIDER,
