@@ -362,7 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-
 ## my unignore
 !demo/LsassRead/LsassRead.exe
 !demo/ProcInject/ProcInject.exe
