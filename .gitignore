@@ -364,6 +364,7 @@ FodyWeavers.xsd
 
 ## my ignore
 rzpnk.sys
+demo/LsassRead/NeacSafe64.*
 
 ## my unignore
 !demo/LsassRead/LsassRead.exe
