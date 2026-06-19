@@ -21,12 +21,12 @@ iEDR uses ETW to track the relevant actions of MsMpEng (MDE) against your malwar
 | Phase       | ETW Antimalware Engine | Kernel Audit API Calls | ETW TI        | Hooked EDR    |
 |-------------|------------------------|------------------------|---------------|---------------|
 | Static Scan | **Stream scan**        | Not visible            | Not visible   | NtReadFile    |
-| Emulation   | **Scan**               | Not visible            | Alloc in EDR  | Not visible   |
-| Memory Scan | Not visible            | **OpenProcess**        | RW->RX in EDR | NtOpenProcess |
+| Emulation   | **Scan**               | Not visible            | Alloc in EDR and RW->RX  | Not visible   |
+| Memory Scan | Not visible            | **OpenProcess**        | Not visible | NtOpenProcess |
 | Tracking    | Other events           | Other events           | Other events  | Other events  |
 
 ## More Theory
 * see [EDR-Introspection](https://github.com/evilele/EDR-Introspection)
+* [Defender Telemetry](https://blog.deeb.ch/posts/defender-telemetry/)
+* [Defender Introspection](https://blog.deeb.ch/posts/defender-introspection/)
 * and [Defender Detection Mechanisms](https://blog.levi.wiki/post/2026-01-09-defender-detection-mechanisms)
-
-
