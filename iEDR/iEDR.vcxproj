@@ -133,19 +133,20 @@
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="cxxopts.h" />
+    <ClInclude Include="cxxopts.hpp" />
     <ClInclude Include="etwparser.h" />
     <ClInclude Include="etwreader.h" />
     <ClInclude Include="providers.h" />
     <ClInclude Include="iEDR.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="resource1.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="Resource.rc" />
+    <ResourceCompile Include="iEDR.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="..\..\..\..\Downloads\favicon_io\favicon.ico" />
+    <Image Include="favicon.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

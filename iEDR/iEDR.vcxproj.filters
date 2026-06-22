@@ -35,7 +35,7 @@
     <ClInclude Include="iEDR.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="cxxopts.h">
+    <ClInclude Include="cxxopts.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="etwreader.h">
@@ -53,14 +53,17 @@
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="resource1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="Resource.rc">
+    <ResourceCompile Include="iEDR.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="..\..\..\..\Downloads\favicon_io\favicon.ico">
+    <Image Include="favicon.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>
