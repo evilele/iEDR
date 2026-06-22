@@ -18,7 +18,7 @@ extern bool g_dev_debug;
 extern verbosity_level g_level;
 
 extern std::wstring g_attack_path;
-extern int g_attack_pid;
+extern std::vector<int> g_attack_pids;
 extern int g_edr_pid;
 extern int g_attack_main_tid;
 extern SYSTEMTIME g_last_attack_store;

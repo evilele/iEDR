@@ -27,7 +27,6 @@ void add_trace(const provider& p) {
 
     // extract just event ids
     std::vector<unsigned short> event_ids;
-    event_ids.reserve(events.size());
     for (auto const& e : events) {
 		const auto& event_it = std::find(event_ids.begin(), event_ids.end(), e.id);
         if (event_ids.size() > 0 && event_it != event_ids.end()) { 
@@ -35,7 +34,6 @@ void add_trace(const provider& p) {
 		}
         event_ids.push_back(e.id);
     }
-
    
     // create filter and store them in global deque
     g_active_filters.emplace_back(event_ids);

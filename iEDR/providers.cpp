@@ -13,6 +13,10 @@ const std::wstring c_get_hashes = L"GetHashes";
 const std::wstring c_build_report = L"spynet_report::build_report";
 const std::wstring c_usn_cache_name = L"USN Cache";
 
+const std::wstring def_detection_store = L"ProgramData\\Microsoft\\Windows Defender\\Scans\\History\\Service\\DetectionHistory";
+const std::wstring def_scan_store = L"ProgramData\\Microsoft\\Windows Defender\\Scans\\History\\Store";
+const std::wstring def_quarantine = L"ProgramData\\Microsoft\\Windows Defender\\Quarantine";
+
 /* providers to track */
 
 /* https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Windows-Kernel-Process.tsv
@@ -25,12 +29,12 @@ const std::wstring c_usn_cache_name = L"USN Cache";
     11 ProcessFreeze
 */
 event kp1 = { 1, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"START --- Attack process started" };
-event kp2 = { 2, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"STOP --- Attack process stopped" };
-event kp3 = { 3, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process started a thread" };
-event kp4 = { 4, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process stopped a thread" };
-event kp5 = { 5, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process loaded an image", L"ImageName" };
-event kp6 = { 6, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pid} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process unloaded an image", L"ImageName" };
-event kp11 = { 11, nullptr, { {L"FrozenProcessID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Attack process frozen" };
+event kp2 = { 2, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"STOP --- Attack process stopped" };
+event kp3 = { 3, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Attack process started a thread" };
+event kp4 = { 4, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Attack process stopped a thread" };
+event kp5 = { 5, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process loaded an image", L"ImageName" };
+event kp6 = { 6, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process unloaded an image", L"ImageName" };
+event kp11 = { 11, nullptr, { {L"FrozenProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Attack process frozen" };
 provider kernel_process_provider = {
 	KERNEL_PROCESS_PROVIDER,
     kernel_process_provider_name,
@@ -50,18 +54,21 @@ event kf11 = { 11, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_a
 event kf26 = { 26, nullptr, { {L"FilePath", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"DELETE --- Attack file deleted", };
 event kf26_any = { 26, nullptr, { {L"FilePath", {operation::Type::ANY}, 0} }, L"Deleted", L"FilePath" };
 event kf30 = { 30, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
+event kf30_def_detected = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_detection_store} }, L"Defender detection file created", L"FileName" };
+event kf30_def_scanned = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_scan_store} }, L"Defender scan file created", L"FileName" };
+event kf30_def_quarantine = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_quarantine} }, L"Defender detection file created", L"FileName" };
 event kf30_any = { 30, nullptr, { {L"FileName", {operation::Type::ANY}, 0} }, L"Created", L"FileName" };
 provider kernel_file_provider = {
 	KERNEL_FILE_PROVIDER,
     kernel_file_provider_name,
     {
-        { kf26, kf30 },
-        { kf10, kf11, kf26, kf30 },
-        { kf10, kf11, kf26, kf26_any, kf30 }
+        { kf26, kf30, kf30_def_scanned },
+        { kf10, kf11, kf26, kf30, kf30_def_detected, kf30_def_scanned, kf30_def_quarantine },
+        { kf10, kf11, kf26, kf26_any, kf30, kf30_def_detected, kf30_def_scanned, kf30_def_quarantine }
     }
 };
 
-// todo this could also be filtered for Microsoft IPs
+// todo this could also be filtered for Microsoft IPs, maybe with https://www.microsoft.com/en-us/download/details.aspx?id=56519
 /* https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Windows-Kernel-Network.tsv
     12 TCPIPConnectionattempted
     15 TCPIPConnectionaccepted
@@ -102,8 +109,8 @@ provider kernel_network_provider = {
 */
 event ka3 = { 3, nullptr, { {L"LinkSourceName", {operation::Type::EQUALS}, &g_attack_path} } };
 event ka4 = { 4, nullptr, { { } } };
-event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pid}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x10} }, MsMpEng + L" opened attack process with read access:",  L"DesiredAccess" };
-event ka6 = { 6, nullptr, { {L"ThreadId", {operation::Type::EQUALS}, &g_attack_main_tid} } };
+event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pids}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x10} }, MsMpEng + L" opened attack process with read access:",  L"DesiredAccess" };
+event ka6 = { 6, nullptr, { {L"ThreadId", {operation::Type::EQUALS}, g_attack_main_tid} } };
 provider kernel_api_provider = {
     KERNEL_AUDIT_API_PROVIDER,
     kernel_api_audit_provider_name,
@@ -119,8 +126,8 @@ provider kernel_api_provider = {
 */
 // minimal
 event am1path = { 1, nullptr, { {L"First Resource Path", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Emulation of attack file started" };
-event am1proc = { 1, nullptr, { {L"First Resource Path", {operation::Type::PID_STR_EQUALS}, &g_attack_pid} }, L"Emulation of attack proc started" }; // should match "pid:1234"
-event am5 = { 5, nullptr, { {L"PID", {operation::Type::EQUALS}, &g_attack_pid} }, L"Heuristic scan of attack file started" };
+event am1proc = { 1, nullptr, { {L"First Resource Path", {operation::Type::PID_STR_EQUALS}, &g_attack_pids} }, L"Emulation of attack proc started" }; // should match "pid:1234"
+event am5 = { 5, nullptr, { {L"PID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Heuristic scan of attack file started" };
 event am7 = { 7, nullptr, { {L"Path", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Heuristic scan of attack file skipped" };
 event am43sig = { 43, nullptr, { {L"Name", {operation::Type::PATH_EQUALS}, &g_attack_path} , {L"Message", {operation::Type::EQUALS}, &c_get_hashes} }, L"Get hashes of attack file" };
 event am43spy = { 43, nullptr, { {L"Name", {operation::Type::PATH_EQUALS}, &g_attack_path} , {L"Message", {operation::Type::EQUALS}, &c_build_report} }, L"Submit scan report" };

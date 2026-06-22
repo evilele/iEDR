@@ -284,7 +284,7 @@ void reset_attack_tracking_and_print_evtl_threaded() {
 
         // wait to catch events after process shutdown
         std::this_thread::sleep_for(std::chrono::seconds(tracking_shutdown_delay));
-        g_attack_pid = 0;
+        g_attack_pids = std::vector<int>{};
         g_attack_main_tid = 0;
         if (g_debug) {
             std::wcout << L"[+] Reset attack tracking variables after attack termination\n";

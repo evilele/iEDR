@@ -53,39 +53,89 @@ static const GUID ANTIMALWARE_ENGINE_PROVIDER =
     {0xb3, 0xb6, 0x96, 0xd8, 0xdf, 0x86, 0x8d, 0x99}
 };
 
-struct FilterValue {
-    enum Type { INT_FILTER, INT_PTR_FILTER, WSTR_PTR_FILTER } type;
-
-    union {
-        int i_val;
-        const int* i_ptr;
-        const std::wstring* s_ptr;
-    };
-
-    // Constructors for automatic type detection
-    FilterValue(int v) : type(INT_FILTER), i_val(v) {} // constant or any filter
-    FilterValue(const int* v) : type(INT_PTR_FILTER), i_ptr(v) {} // pid etc. filter
-	FilterValue(const std::wstring* v) : type(WSTR_PTR_FILTER), s_ptr(v) {} // path etc. filter
-
-    int get_int() const {
-        return (type == INT_PTR_FILTER) ? *i_ptr : i_val;
-    }
-
-    std::wstring get_str() const {
-        return (type == WSTR_PTR_FILTER && s_ptr) ? *s_ptr : L"";
-    }
-};
 
 struct operation {
     enum class Type { EQUALS, PATH_EQUALS, PID_STR_EQUALS, CONTAINS_STR, CONTAINS_FLAG, ANY };
     const Type type;
 };
 
+struct FilterValue {
+    enum FilterType { CONST_FILTER, INT_VECTOR_FILTER, WSTR_FILTER } filter_type;
+
+    union {
+        int i_val;
+        const std::vector<int>* v_ptr;
+        const std::wstring* s_ptr;
+    };
+
+    FilterValue(int v) : filter_type(CONST_FILTER), i_val(v) {}
+    FilterValue(const std::vector<int>* v) : filter_type(INT_VECTOR_FILTER), v_ptr(v) {}
+    FilterValue(const std::wstring* v) : filter_type(WSTR_FILTER), s_ptr(v) {}
+
+    // Checks if an integer matches based on a specific operation type
+    bool match_int(int actual_int, operation::Type op_type) const {
+        if (filter_type == CONST_FILTER) {
+            if (i_val == 0) return true; // Bypass
+
+            switch (op_type) {
+            case operation::Type::EQUALS:
+                return actual_int == i_val;
+            case operation::Type::CONTAINS_FLAG:
+                return (actual_int & i_val) != 0;
+            case operation::Type::PID_STR_EQUALS: {
+                std::wstring expected_str = L"pid:" + std::to_wstring(i_val);
+                return std::to_wstring(actual_int) == expected_str;
+            }
+            case operation::Type::ANY:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        if (filter_type == INT_VECTOR_FILTER && v_ptr) {
+            if (op_type == operation::Type::ANY) return true;
+            if (v_ptr->empty()) return false; // operation defined but nullptr to compare -> always false
+            return std::find(v_ptr->begin(), v_ptr->end(), actual_int) != v_ptr->end();
+        }
+
+        return false;
+    }
+
+    // Checks if a string matches based on a specific operation type
+    bool match_str(const std::wstring& actual_str, operation::Type op_type) const {
+        if (filter_type == WSTR_FILTER && s_ptr) {
+            if (s_ptr->empty()) return true;
+
+            switch (op_type) {
+            case operation::Type::EQUALS:
+                return actual_str == *s_ptr;
+            case operation::Type::PATH_EQUALS:
+                return filepath_match(actual_str, *s_ptr);
+            case operation::Type::CONTAINS_STR:
+                return actual_str.find(*s_ptr) != std::wstring::npos;
+            case operation::Type::ANY:
+                return true;
+            default:
+                return false;
+            }
+        }
+        return false;
+    }
+};
 
 struct filter {
     const std::wstring field_name;
     const operation op;
     const FilterValue expected;
+
+    bool matches(int actual_int) const {
+        return expected.match_int(actual_int, op.type);
+    }
+
+    bool matches(const std::wstring& actual_str) const {
+        return expected.match_str(actual_str, op.type);
+    }
 };
 
 struct event {

@@ -8,187 +8,172 @@
 #include "providers.h"
 #include "utils.h"
 
-// do int-based fields (like ProcessId or DesiredAccess) match?
-bool matches(long long actual, const filter& f) {
-    int expected = f.expected.get_int();
-    switch (f.op.type) {
-    case operation::Type::EQUALS:
-        return actual == expected;
-    case operation::Type::CONTAINS_FLAG:
-        return (actual & expected) != 0;
-    case operation::Type::PID_STR_EQUALS: {
-        std::wstring expected_str = L"pid:" + std::to_wstring(expected);
-        return std::to_wstring(actual) == expected_str;
-	}
-    case operation::Type::ANY:
-        return true;
-    default:
-        return false;
-    }
-}
+// track attack process start and stop
+void track_process(int id, const krabs::schema& schema) {
 
-// do wstring-based fields (like FilePath) match?
-bool matches(const std::wstring& actual, const filter& f) {
-    std::wstring expected = f.expected.get_str();
-    switch (f.op.type) {
-    case operation::Type::EQUALS:
-        return actual == expected;
-    case operation::Type::PATH_EQUALS:
-		return filepath_match(actual, expected);
-    case operation::Type::CONTAINS_STR:
-        return actual.find(expected) != std::wstring::npos;
-	case operation::Type::ANY:
-        return true;
-    default:
-        return false;
-    }
-}
+    // check if the event marks the start of the attack
+    if (g_attack_pids.empty() && id == 1) { // ProcessStart event
+        krabs::parser parser(schema);
 
-void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
-    try {
-        std::wstring provider_name = schema.provider_name();
-        int id = schema.event_id();
+        try {
+            // the attack path to check against
+            std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
 
-        // todo: also track processes started by the attack (?)
-        // todo: refactor tracking (separate function and structs for proc started/stopped and file created/deleted)
-        // track attack process start and stop
-        if (provider_name == kernel_process_provider_name) {
-
-            // check if the event marks the start of the attack
-            if (g_attack_pid == 0 && id == 1) { // ProcessStart event
-                krabs::parser parser(schema);
-
+            if (filepath_match(image_name, g_attack_path)) {
                 try {
-                    // the attack path to check against
-                    std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
-
-                    if (filepath_match(image_name, g_attack_path)) {
-                        try {
-                            g_attack_pid = parser.parse<uint32_t>(L"ProcessID");
-                            if (g_debug) {
-                                std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << g_attack_pid << L"\n";
-                            }
-                        }
-                        catch (const std::exception& e) {
-                            if (g_dev_debug) {
-                                std::wcerr << L"[!] Error parsing ProcessID for attack start event: " << string_to_wstring(e.what()) << L"\n";
-                            }
-                        }
+                    int new_proc = parser.parse<uint32_t>(L"ProcessID");
+                    g_attack_pids.push_back(new_proc);
+                    if (g_debug) {
+                        std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << new_proc << L"\n";
                     }
                 }
                 catch (const std::exception& e) {
                     if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ImageName for attack start event: " << string_to_wstring(e.what()) << L"\n";
-                    }
-                }
-            }
-
-            // check if the event marks the start of the main thread
-            else if (g_attack_main_tid == 0 && id == 3) { // ThreadStart event
-                krabs::parser parser(schema);
-
-                try {
-                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
-                    if (proc_id == g_attack_pid) {
-                        g_attack_main_tid = parser.parse<uint32_t>(L"ThreadID");
-                        if (g_debug) {
-                            std::wcout << L"[+] Detected main thread of attack process -> TID=" << g_attack_main_tid << L"\n";
-                        }
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ThreadStart event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
-                    }
-                }
-            }
-
-            // check if the event marks the end of the attack -> reset attack PID (and path) to be able to detect next attack
-            else if (g_attack_pid != 0 && id == 2) { // ProcessStop event
-                krabs::parser parser(schema);
-
-                try {
-                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
-                    std::string image_name = parser.parse<std::string>(L"ImageName"); // event id 2 uses ansi string
-
-                    if (proc_id == g_attack_pid) {
-                        if (g_debug) {
-                            std::wcout << L"[+] Detected termination of attack: " << string_to_wstring(image_name) << L"\n";
-                        }
-
-                        // reset tracking variables and print event log with a delay
-                        reset_attack_tracking_and_print_evtl_threaded();
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ProcessID for attack end event: " << string_to_wstring(e.what()) << L"\n";
-                    }
-                }
-            }
-
-            // check if the event marks the end of the main thread -> reset main thread TID
-            else if (g_attack_pid != 0 && g_attack_main_tid != 0 && id == 4) { // ThreadStop event
-                krabs::parser parser(schema);
-
-                try {
-                    int proc_id = parser.parse<uint32_t>(L"ProcessID");
-                    int thread_id = parser.parse<uint32_t>(L"ThreadID");
-                    if (proc_id == g_attack_pid && thread_id == g_attack_main_tid) {
-                        if (g_dev_debug) {
-                            std::wcout << L"[+] Detected end of main thread of attack process\n";
-                        }
-                        g_attack_main_tid = 0;
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing ThreadStop event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
+                        std::wcerr << L"[!] Error parsing ProcessID for attack start event: " << string_to_wstring(e.what()) << L"\n";
                     }
                 }
             }
         }
+        catch (const std::exception& e) {
+            if (g_dev_debug) {
+                std::wcerr << L"[!] Error parsing ImageName for attack start event: " << string_to_wstring(e.what()) << L"\n";
+            }
+        }
+    }
 
-        // track attack file creation & deletion
-        if (provider_name == kernel_file_provider_name) { 
-            if (id == 30) { // CreateNewFile event
-                krabs::parser parser(schema);
-                try {
-                    std::wstring file_path = parser.parse<std::wstring>(L"FileName");
-                    if (filepath_match(file_path, g_attack_path)) {
-                        if (g_debug) {
-                            std::wcout << L"[+] Detected creation of attack file: " << file_path << L"\n";
-                        }
-                        GetSystemTime(&g_last_attack_store);
-                    }
-                }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing CreateNewFile event for attack file creation tracking: " << string_to_wstring(e.what()) << L"\n";
-                    }
-                }
-			}
+    // check if the event marks the start of the main thread
+    else if (!g_attack_pids.empty() && g_attack_main_tid == 0 && id == 3) { // ThreadStart event
+        krabs::parser parser(schema);
 
-            if (id == 26) { // FileDelete event
-                krabs::parser parser(schema);
-                try {
-                    std::wstring file_path = parser.parse<std::wstring>(L"FilePath");
-                    if (filepath_match(file_path, g_attack_path)) {
-                        if (g_debug) {
-                            std::wcout << L"[+] Detected deletion of attack file: " << file_path << L"\n";
-                        }
-                        if (g_attack_pid == 0) { // if attack not started yet, also print malware report
-                            reset_attack_tracking_and_print_evtl_threaded();
-                        }
+        try {
+            int proc_id = parser.parse<uint32_t>(L"ProcessID");
+            if (std::find(g_attack_pids.begin(), g_attack_pids.end(), proc_id) != g_attack_pids.end()) {
+                g_attack_main_tid = parser.parse<uint32_t>(L"ThreadID");
+                if (g_debug) {
+                    std::wcout << L"[+] Detected main thread of main attack process -> TID=" << g_attack_main_tid << L"\n";
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            if (g_dev_debug) {
+                std::wcerr << L"[!] Error parsing ThreadStart event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
+            }
+        }
+    }
+
+    // check if the event marks the end of the attack -> reset attack PID (and path) to be able to detect next attack
+    else if (!g_attack_pids.empty() && id == 2) { // ProcessStop event
+        krabs::parser parser(schema);
+
+        try {
+            int proc_id = parser.parse<uint32_t>(L"ProcessID");
+            std::string image_name = parser.parse<std::string>(L"ImageName"); // event id 2 uses ansi string
+
+            auto it = std::find(g_attack_pids.begin(), g_attack_pids.end(), proc_id);
+            if (it != g_attack_pids.end()) {
+
+                g_attack_pids.erase(it, g_attack_pids.end()); // remove attack pid
+
+                if (g_attack_pids.empty()) {
+                    // reset tracking variables and print event log with a delay
+                    reset_attack_tracking_and_print_evtl_threaded();
+
+                    if (g_debug) {
+                        std::wcout << L"[+] Detected termination of main attack process: " << string_to_wstring(image_name) << L"\n";
                     }
                 }
-                catch (const std::exception& e) {
-                    if (g_dev_debug) {
-                        std::wcerr << L"[!] Error parsing FileDelete event for attack file deletion tracking: " << string_to_wstring(e.what()) << L"\n";
+                else {
+                    if (g_debug) {
+                        std::wcout << L"[+] Detected termination of an attack subprocess: " << string_to_wstring(image_name) << L"\n";
                     }
                 }
             }
-		}
+        }
+        catch (const std::exception& e) {
+            if (g_dev_debug) {
+                std::wcerr << L"[!] Error parsing ProcessID for attack end event: " << string_to_wstring(e.what()) << L"\n";
+            }
+        }
+    }
+
+    // check if the event marks the end of the main thread -> reset main thread TID
+    else if (!g_attack_pids.empty() && g_attack_main_tid != 0 && id == 4) { // ThreadStop event
+        krabs::parser parser(schema);
+
+        try {
+            int proc_id = parser.parse<uint32_t>(L"ProcessID");
+            int thread_id = parser.parse<uint32_t>(L"ThreadID");
+            if (!g_attack_pids.empty() && proc_id == g_attack_pids[0] && thread_id == g_attack_main_tid) {
+                if (g_dev_debug) {
+                    std::wcout << L"[+] Detected end of main thread of main attack process\n";
+                }
+                g_attack_main_tid = 0;
+            }
+        }
+        catch (const std::exception& e) {
+            if (g_dev_debug) {
+                std::wcerr << L"[!] Error parsing ThreadStop event for main thread detection: " << string_to_wstring(e.what()) << L"\n";
+            }
+        }
+    }
+}
+
+void track_file(int id, const krabs::schema& schema) {
+    if (id == 30) { // CreateNewFile event
+        krabs::parser parser(schema);
+        try {
+            std::wstring file_path = parser.parse<std::wstring>(L"FileName");
+            if (filepath_match(file_path, g_attack_path)) {
+                if (g_debug) {
+                    std::wcout << L"[+] Detected creation of attack file: " << file_path << L"\n";
+                }
+                GetSystemTime(&g_last_attack_store);
+            }
+        }
+        catch (const std::exception& e) {
+            if (g_dev_debug) {
+                std::wcerr << L"[!] Error parsing CreateNewFile event for attack file creation tracking: " << string_to_wstring(e.what()) << L"\n";
+            }
+        }
+    }
+
+    if (id == 26) { // FileDelete event
+        krabs::parser parser(schema);
+        try {
+            std::wstring file_path = parser.parse<std::wstring>(L"FilePath");
+            if (filepath_match(file_path, g_attack_path)) {
+                if (g_debug) {
+                    std::wcout << L"[+] Detected deletion of attack file: " << file_path << L"\n";
+                }
+                if (g_attack_pids.empty()) { // if attack not started yet, also print malware report
+                    reset_attack_tracking_and_print_evtl_threaded();
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            if (g_dev_debug) {
+                std::wcerr << L"[!] Error parsing FileDelete event for attack file deletion tracking: " << string_to_wstring(e.what()) << L"\n";
+            }
+        }
+    }
+}
+
+void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
+    std::wstring provider_name = schema.provider_name();
+    int id = schema.event_id();
+
+    // todo: maybe refactor tracking (separate function and structs for proc started/stopped and file created/deleted ?)
+    if (provider_name == kernel_process_provider_name) {
+        track_process(id, schema);
+    }
+
+    // track attack file creation & deletion
+    if (provider_name == kernel_file_provider_name) {
+        track_file(id, schema);
+    }
+
+    // parse the event and check for relevancy
+    try {
 
 		// 1.check if this provider is interesting
         const auto it = std::find_if(providers_to_track.begin(), providers_to_track.end(), [&](const provider& p) {
@@ -252,33 +237,33 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     switch (type) {
                     case TDH_INTYPE_UINT16: {
                         uint16_t val = parser.parse<uint16_t>(f.field_name);
-                        current_match = matches((int)val, f);
+                        current_match = f.matches(val);
 						last_int = (int)val;
                         break;
                     }
                     case TDH_INTYPE_UINT32:
                     case TDH_INTYPE_HEXINT32: {
                         uint32_t val = parser.parse<uint32_t>(f.field_name);
-                        current_match = matches((int)val, f);
+                        current_match = f.matches(val);
                         last_int = (int)val;
                         break;
                     }
                     case TDH_INTYPE_UNICODESTRING: {
                         std::wstring val = parser.parse<std::wstring>(f.field_name);
-                        current_match = matches(val, f);
+                        current_match = f.matches(val);
 						last_wstr = val;
                         break;
                     }
                     case TDH_INTYPE_ANSISTRING: {
                         std::string val = parser.parse<std::string>(f.field_name);
-                        current_match = matches(std::wstring(val.begin(), val.end()), f);
+                        current_match = f.matches(std::wstring(val.begin(), val.end()));
 						last_wstr = std::wstring(val.begin(), val.end());
                         break;
                     }
                     case TDH_INTYPE_POINTER:
                     case TDH_INTYPE_SIZET: {
                         uint64_t val = parser.parse<uint64_t>(f.field_name);
-                        current_match = matches((long long)val, f);
+                        current_match = f.matches((int)val);
 						last_int = (int)val;
                         break;
                     }

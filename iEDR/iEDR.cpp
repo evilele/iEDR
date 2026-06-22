@@ -5,7 +5,7 @@
 #include <iostream>
 #include <vector>
 
-#include "cxxopts.h"
+#include "cxxopts.hpp"
 
 #include "iEDR.h"
 #include "etwreader.h"
@@ -18,8 +18,8 @@ bool g_dev_debug = false;
 verbosity_level g_level = MINIMAL;
 
 std::wstring g_attack_path;
-int g_attack_pid = 0;
-int g_edr_pid = 0;
+std::vector<int> g_attack_pids = {};
+int g_edr_pid = 0; // TODO add MsSense
 int g_attack_main_tid = 0;
 SYSTEMTIME g_last_attack_store = {0};
 
