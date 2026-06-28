@@ -9,22 +9,40 @@
 #include "utils.h"
 
 // track attack process start and stop
-void track_process(int id, const krabs::schema& schema) {
+void track_process_start(int id, const krabs::schema& schema) {
 
     // check if the event marks the start of the attack
-    if (g_attack_pids.empty() && id == 1) { // ProcessStart event
+    if (id == 1) { // ProcessStart event
         krabs::parser parser(schema);
 
         try {
             // the attack path to check against
+
+            bool is_main_attack_proc = false;
+            bool is_child_proc = false;
+
             std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
+            int ppid = parser.parse<int>(L"ParentProcessID");
+            auto it = std::find(g_attack_pids.begin(), g_attack_pids.end(), ppid);
 
             if (filepath_match(image_name, g_attack_path)) {
+                is_main_attack_proc = true;
+            }
+            else if (it != g_attack_pids.end()) {
+                is_child_proc = true;
+            }
+
+            if (is_main_attack_proc || is_child_proc) {
                 try {
                     int new_proc = parser.parse<uint32_t>(L"ProcessID");
                     g_attack_pids.push_back(new_proc);
                     if (g_debug) {
-                        std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << new_proc << L"\n";
+                        if (is_main_attack_proc) {
+                            std::wcout << L"[+] Detected start of attack: " << image_name << " -> PID=" << new_proc << L"\n";
+                        }
+                        else if (is_child_proc) {
+                            std::wcout << L"[+] Detected child-proc of attack: " << image_name << " -> PID=" << new_proc << L"\n";
+                        }
                     }
                 }
                 catch (const std::exception& e) {
@@ -60,9 +78,13 @@ void track_process(int id, const krabs::schema& schema) {
             }
         }
     }
+}
+
+// TODO: correct here?
+void track_process_stop(int id, const krabs::schema& schema) {
 
     // check if the event marks the end of the attack -> reset attack PID (and path) to be able to detect next attack
-    else if (!g_attack_pids.empty() && id == 2) { // ProcessStop event
+    if (!g_attack_pids.empty() && id == 2) { // ProcessStop event
         krabs::parser parser(schema);
 
         try {
@@ -90,7 +112,7 @@ void track_process(int id, const krabs::schema& schema) {
             }
         }
         catch (const std::exception& e) {
-            if (g_dev_debug) {
+            if (true) {
                 std::wcerr << L"[!] Error parsing ProcessID for attack end event: " << string_to_wstring(e.what()) << L"\n";
             }
         }
@@ -164,7 +186,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 
     // todo: maybe refactor tracking (separate function and structs for proc started/stopped and file created/deleted ?)
     if (provider_name == kernel_process_provider_name) {
-        track_process(id, schema);
+        track_process_start(id, schema); // before other filters?
     }
 
     // track attack file creation & deletion
@@ -175,17 +197,17 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
     // parse the event and check for relevancy
     try {
 
-		// 1.check if this provider is interesting
-        const auto it = std::find_if(providers_to_track.begin(), providers_to_track.end(), [&](const provider& p) {
+		// 1. get the provider
+        auto it = std::find_if(providers_to_track.begin(), providers_to_track.end(), [&](provider& p) {
             return p.provider_name == provider_name;
         });
         if (it == providers_to_track.end()) {
             return; // not found
         }
-        const provider& prov = *it;
+        provider prov = *it;
 
-		// 2. check if this event ID is interesting, given the provider
-        const auto& events = prov.events_to_track.get(g_level);
+		// 2. get the event id to filter against
+        auto events = prov.events_to_track.get(g_level);
         for (const auto& e : events) {
             if (e.id != id) {
                 continue;
@@ -198,7 +220,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
             if (e.originating_pid != nullptr) {
                 int originating_pid = schema.process_id();
                 if (*e.originating_pid != originating_pid) {
-                    if (g_dev_debug) {
+                    if (g_super_dev_debug) {
                         std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.task_name()
                             << "." << schema.opcode_name() << L" : (type=uint) process_id" << L" actual: " << originating_pid << L"\n";
                     }
@@ -226,8 +248,8 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                         }
                     }
                     if (type == -1) { // not found
-                        if (g_dev_debug) {
-                            std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." << schema.task_name()
+                        if (g_super_dev_debug) {
+                            std::wcout << L"[-] Field name not found: " << provider_name << L" - " << id << L"." << schema.task_name()
                                 << "." << schema.opcode_name() << L" : field '" << f.field_name << L"' not found in event properties\n";
                         }
                         current_match = false;
@@ -275,15 +297,18 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     }
 
                     // if this is the field we also want to output for matched events, store the output value for later
-                    if (e.add_output_field == f.field_name) {
+                    if (current_match && e.add_output_field == f.field_name) {
                         add_field_output = L" " + f.field_name + L"=";
-                        if (type == TDH_INTYPE_UNICODESTRING || type == TDH_INTYPE_ANSISTRING) {
+                        if (e.add_output_format == AddOutputFormat::STR || type == TDH_INTYPE_UNICODESTRING || type == TDH_INTYPE_ANSISTRING) {
                             add_field_output += last_wstr;
                         }
                         else {
-                            // convert last_int to hex
+                            // convert last_int
                             std::wstringstream wss;
-							wss << L"0x" << std::hex << last_int;
+                            if (e.add_output_format == AddOutputFormat::HEX) {
+                                wss << L"0x" << std::hex; // to hex
+                            }
+                            wss << last_int; // or just dec (implicit)
 							add_field_output += wss.str();
                         }
 					}
@@ -303,7 +328,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 }
 
                 if (!current_match) {
-                    if (g_dev_debug) {
+                    if (g_super_dev_debug) {
                         std::wcout << L"[-] Filter failed: " << provider_name << L" - " << id << L"." <<  schema.task_name()
                             << "." << schema.opcode_name() << L" : (type=" << type << L") " << f.field_name;
                         if (last_int != 0) {
@@ -345,7 +370,7 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 					}
 				}
 
-				// and maybe output more debug info
+				// and output more debug info
                 if (g_dev_debug) { 
                     std::wcout << L" - " << provider_name << L" - " << id;
                 }
@@ -358,6 +383,10 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 			std::wcerr << L"[!] Error parsing event: " << string_to_wstring(e.what()) << L"\n";
         }
         return;
+    }
+
+    if (provider_name == kernel_process_provider_name) {
+        track_process_stop(id, schema);
     }
 }
 
