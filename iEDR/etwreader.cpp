@@ -12,10 +12,24 @@
 #include "providers.h"
 #include "utils.h"
 
+
 std::deque<krabs::provider<>> g_active_providers;
 std::deque<krabs::event_filter> g_active_filters;
 
-krabs::user_trace trace_etw(L"iEDR");
+
+krabs::user_trace& get_iedr_trace() {
+    // This static block runs EXACTLY ONCE, the very first time this function is called.
+    static krabs::user_trace instance([]() {
+        int next_id = get_active_trace_count() + 1;
+        std::wstring name = L"iEDR_" + std::to_wstring(next_id);
+
+        // Print it out so you can see it working
+        std::wcout << L"[+] Initializing ETW trace session: " << name << L"\n";
+        return name;
+        }());
+
+    return instance;
+}
 
 
 void add_trace(const provider& p) {
@@ -46,7 +60,8 @@ void add_trace(const provider& p) {
 
     // appy filter to provider and enable the provider
     prov.add_filter(events_filter);
-    trace_etw.enable(prov);
+    krabs::user_trace& trace = get_iedr_trace();
+    trace.enable(prov);
 
     if (g_debug) {
         std::wcout << L"[+] ETW enabling " << p.provider_name << L": ";
@@ -65,7 +80,8 @@ DWORD WINAPI t_start_traces(LPVOID param) {
         if (g_debug) {
             std::wcout << L"[+] ETW traces registered, starting...\n";
         }
-        trace_etw.start(); // trace_start is blocking, hence threaded
+        krabs::user_trace& trace = get_iedr_trace();
+        trace.start(); // trace_start is blocking, hence threaded
     }
     catch (const std::exception& e) {
         std::wcout << L"[!] ETW traces exception: " << e.what() << "\n";
@@ -90,7 +106,8 @@ bool start_etw_traces(std::vector<HANDLE>& threads) {
 
 void stop_etw_traces() {
     try {
-        trace_etw.stop();
+        krabs::user_trace& trace = get_iedr_trace();
+        trace.stop();
         g_active_providers.clear();
         g_active_filters.clear();
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <atomic>
 
 const std::wstring MDE_log = L"Microsoft-Windows-Windows Defender/Operational";
 const std::wstring MsMpEng = L"MsMpEng.exe";
@@ -15,7 +16,9 @@ enum verbosity_level {
 
 extern bool g_debug;
 extern bool g_dev_debug;
+extern bool g_super_dev_debug;
 extern verbosity_level g_level;
+extern bool keep_running;
 
 extern std::wstring g_attack_path;
 extern std::vector<int> g_attack_pids;
@@ -30,3 +33,5 @@ std::string wstring_to_string(const std::wstring&);
 std::wstring timestamp_to_wstring(LARGE_INTEGER);
 int get_process_id_by_name(const std::wstring&);
 void reset_attack_tracking_and_print_evtl_threaded();
+int get_active_trace_count();
+BOOL WINAPI catch_ctrl_c(DWORD);

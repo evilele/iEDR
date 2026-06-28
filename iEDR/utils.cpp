@@ -10,6 +10,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <krabs.hpp>
 
 #include "utils.h"
 
@@ -298,4 +299,50 @@ void reset_attack_tracking_and_print_evtl_threaded() {
         GetSystemTime(&g_last_attack_store);
     };
     std::thread(reset).detach();
+}
+
+// Helper function to count currently active ETW sessions
+int get_active_trace_count() { // this could be a global mutex to defeat race conditions (when multiple starup at same ms)
+    const ULONG MAX_SESSIONS = 64;
+
+    // Each entry needs space for the properties struct + max session name length
+    // (1024 bytes per entry is plenty for ETW session names/log file paths)
+    const ULONG ENTRY_SIZE = sizeof(EVENT_TRACE_PROPERTIES) + 1024;
+
+    // Allocate a continuous byte buffer for all entries
+    std::vector<BYTE> buffer(ENTRY_SIZE * MAX_SESSIONS, 0);
+
+    // Create the pointer array required by QueryAllTracesW
+    PEVENT_TRACE_PROPERTIES properties_array[MAX_SESSIONS] = { nullptr };
+
+    // Layout the pointers across our allocated buffer space
+    for (ULONG i = 0; i < MAX_SESSIONS; ++i) {
+        // Point each array element to its designated chunk in the buffer
+        properties_array[i] = reinterpret_cast<PEVENT_TRACE_PROPERTIES>(&buffer[i * ENTRY_SIZE]);
+
+        // CRITICAL: Windows reads this to ensure it doesn't overflow the boundary
+        properties_array[i]->Wnode.BufferSize = ENTRY_SIZE;
+    }
+
+    ULONG session_count = 0;
+    ULONG status = QueryAllTracesW(properties_array, MAX_SESSIONS, &session_count);
+
+    if (status == ERROR_SUCCESS) {
+        return static_cast<int>(session_count);
+    }
+
+    // Returns 0 if it fails (e.g., if not running as Admin)
+    return 0;
+}
+
+BOOL WINAPI catch_ctrl_c(DWORD ctrl_type) {
+    switch (ctrl_type) {
+    case CTRL_C_EVENT:
+        std::wcout << L"[+] CTRL+C intercepted, shutdown...\n";
+        keep_running = false;
+        return TRUE; // Return TRUE to say we handled the event
+
+    default:
+        return FALSE; // Let other events pass through
+    }
 }
