@@ -55,7 +55,7 @@ static const GUID ANTIMALWARE_ENGINE_PROVIDER =
 
 
 struct operation {
-    enum class Type { EQUALS, PATH_EQUALS, PID_STR_EQUALS, CONTAINS_STR, CONTAINS_FLAG, ANY };
+    enum class Type { EQUALS, PATH_EQUALS, PID_STR_EQUALS, CONTAINS_STR, CONTAINS_FLAG, IN_LIST, FIRST_IN_LIST, NFIRST_IN_LIST, ANY };
     const Type type;
 };
 
@@ -94,9 +94,26 @@ struct FilterValue {
         }
 
         if (filter_type == INT_VECTOR_FILTER && v_ptr) {
-            if (op_type == operation::Type::ANY) return true;
-            if (v_ptr->empty()) return false; // operation defined but nullptr to compare -> always false
-            return std::find(v_ptr->begin(), v_ptr->end(), actual_int) != v_ptr->end();
+            switch (op_type) {
+                case operation::Type::ANY:
+                    return true;
+                case operation::Type::IN_LIST: 
+                {
+                    if (v_ptr->empty()) return false; // operation defined but no list to compare against -> always false
+                    return std::find(v_ptr->begin(), v_ptr->end(), actual_int) != v_ptr->end();
+                }
+                case operation::Type::FIRST_IN_LIST: 
+                {
+                    if (v_ptr->empty()) return false;
+                    return actual_int == v_ptr->at(0);
+                }
+                case operation::Type::NFIRST_IN_LIST:
+                {
+                    if (v_ptr->empty()) return false;
+                    return std::find(v_ptr->begin() + 1, v_ptr->end(), actual_int) != v_ptr->end();
+                }
+                                                   
+            }
         }
 
         return false;
@@ -105,8 +122,6 @@ struct FilterValue {
     // Checks if a string matches based on a specific operation type
     bool match_str(const std::wstring& actual_str, operation::Type op_type) const {
         if (filter_type == WSTR_FILTER && s_ptr) {
-            if (s_ptr->empty()) return true;
-
             switch (op_type) {
             case operation::Type::EQUALS:
                 return actual_str == *s_ptr;
@@ -138,12 +153,22 @@ struct filter {
     }
 };
 
+enum AddOutputFormat {
+    DEC,
+    HEX,
+    STR
+};
+
+// refactor (problem): 1 output maps to n filters, 1..n filters may contain interesting information to print (add_output)
+// --> add_output should be a list containing {field, format, add_text} and output += add_output_1, ..., add_output_n
+// also maybe translate pid in output to exe_name?
 struct event {
     const int id;
-    const int* originating_pid; // optional originating PID filter
-    const std::vector<filter> filters; // field filters
+    const int* originating_pid; // optional originating PID filter // TODO this is only used for ka5, relevant? refactor?
+    const std::vector<filter> filters; // field filters// TODO refactor so that fields must not be in <>filters?
     const std::wstring output;
-	const std::wstring add_output_field; // optional output from field value, field must also be in filters but can also be ANY (not filtered)
+	const std::wstring add_output_field; // optional output from field value, field must also be in filters but can also be ANY (not filtered) // TODO above
+    const AddOutputFormat add_output_format;
 };
 
 struct events {

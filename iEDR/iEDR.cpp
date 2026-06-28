@@ -14,6 +14,8 @@
 bool g_trace_started = false;
 bool g_debug = false;
 bool g_dev_debug = false;
+bool g_super_dev_debug = false;
+bool keep_running = true;
 
 verbosity_level g_level = MINIMAL;
 
@@ -66,7 +68,8 @@ int main(int argc, char* argv[]) {
     options.add_options()
         ("h,help", "Print usage")
         ("d,debug", "Enable debug output", cxxopts::value<bool>()->default_value("false"))
-		("v,verbose", "Enable verbose development debug output", cxxopts::value<bool>()->default_value("false"))
+        ("v,verbose", "Enable verbose development debug output", cxxopts::value<bool>()->default_value("false"))
+        ("s,superVerbose", "Enable verbose output of all unmatched events", cxxopts::value<bool>()->default_value("false"))
         ("a,attack", "The file path of the attack to trace", cxxopts::value<std::string>()) // somehow wstring breaks cxxopts
         ("l,level", "The trace level, between 0 (minimal) and 2 (verbose) events", cxxopts::value<int>()->default_value("0"));
 
@@ -105,14 +108,18 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (result.count("verbose")) {
-        g_dev_debug = true;
-        std::wcout << L"[+] Development debug output enabled.\n";
-    }
     if (result.count("debug")) {
         g_debug = true;
         std::wcout << L"[+] Debug output enabled.\n";
 	}
+    if (result.count("verbose")) {
+        g_dev_debug = true;
+        std::wcout << L"[+] Development debug output enabled.\n";
+    }
+    if (result.count("superVerbose")) {
+        g_super_dev_debug = true;
+        std::wcout << L"[+] Super verbose development debug output enabled.\n";
+    }
 
     if (result.count("level")) {
         int level = result["level"].as<int>();
@@ -137,39 +144,47 @@ int main(int argc, char* argv[]) {
 	}
 
     // start ETW traces for monitoring
-    std::vector<HANDLE> threads;
-    if (!start_etw_traces(threads)) {
-        std::wcerr << L"[!] Failed to start ETW traces.\n";
+    try {
+        if (!SetConsoleCtrlHandler(catch_ctrl_c, TRUE)) {
+            std::cerr << "[!] Error: Could not set control handler.\n";
+            return 1;
+        }
+
+        std::vector<HANDLE> threads;
+        if (!start_etw_traces(threads)) {
+            std::wcerr << L"[!] Failed to start ETW traces.\n";
+            return 1;
+        }
+
+        GetSystemTime(&g_last_attack_store); // set time to not get older events before tool startup
+        while (!g_trace_started) { // wait for first events
+            Sleep(300);
+        }
+
+        Sleep(1000); // wait for all traces
+        std::wcout << L"[+] Enter STOP (exit) or RESET (generate a report and continue)\n";
+        std::wcout << L"[+] Traces ready, store attack at " << g_attack_path << L"\n";
+
+        std::string input;
+        while (keep_running) { // set in catch_ctrl_c()
+            std::getline(std::cin, input);
+            if (input == "STOP") {
+                break;
+            }
+            if (input == "RESET") {
+                std::wcout << L"[+] Generating report...\n";
+                reset_attack_tracking_and_print_evtl_threaded();
+            }
+        }
+        stop_etw_traces();
+        std::wcout << L"[+] ETW traces stopped\n";
+        Sleep(1000);
+        return 0;
+    }
+    catch (...) {
+        stop_etw_traces();
+        std::wcerr << L"[!] Unhandled error in main()\n";
+        Sleep(1000);
         return 1;
     }
-
-    std::wcout << L"[+] Starting ETW traces" << std::flush;
-    while (!g_trace_started) {
-        std::wcout << L"." << std::flush;
-        Sleep(300);
-    }
-    std::wcout << L"\n";
-    GetSystemTime(&g_last_attack_store); // set time to not get older events before tool startup
-    Sleep(1000); // wait for all traces
-
-	// wait until user presses enter to stop traces and exit
-	std::wcout << L"[+] Traces ready, store attack at " << g_attack_path << L"\n";
-
-    std::wcout << L"[+] Enter STOP to stop ETW traces and exit...\n";
-    std::wcout << L"[+] Enter RESET to generate a report and continue...\n";
-	std::string input;
-	while (true) {
-		std::getline(std::cin, input);
-		if (input == "STOP") {
-			break;
-		}
-        if (input == "RESET") {
-            std::wcout << L"[+] Generating report...\n";
-            reset_attack_tracking_and_print_evtl_threaded();
-		}
-	}
-	stop_etw_traces();
-	std::wcout << L"[+] ETW traces stopped, exiting...\n";
-
-    return 0;
 }

@@ -17,8 +17,11 @@ const std::wstring def_detection_store = L"ProgramData\\Microsoft\\Windows Defen
 const std::wstring def_scan_store = L"ProgramData\\Microsoft\\Windows Defender\\Scans\\History\\Store";
 const std::wstring def_quarantine = L"ProgramData\\Microsoft\\Windows Defender\\Quarantine";
 
+const std::wstring any_match = L"";
+
 /* providers to track */
 
+// TODO this should be refactored to be tracking logic, not filtering logic!
 /* https://github.com/jdu2600/Windows10EtwEvents/blob/main/manifest/Microsoft-Windows-Kernel-Process.tsv
     1 ProcessStart
     2 ProcessStop
@@ -28,20 +31,22 @@ const std::wstring def_quarantine = L"ProgramData\\Microsoft\\Windows Defender\\
     6 ImageUnload
     11 ProcessFreeze
 */
-event kp1 = { 1, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"START --- Attack process started" };
-event kp2 = { 2, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"STOP --- Attack process stopped" };
-event kp3 = { 3, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Attack process started a thread" };
-event kp4 = { 4, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Attack process stopped a thread" };
-event kp5 = { 5, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process loaded an image", L"ImageName" };
-event kp6 = { 6, nullptr, { {L"ProcessID", {operation::Type::EQUALS}, &g_attack_pids} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process unloaded an image", L"ImageName" };
-event kp11 = { 11, nullptr, { {L"FrozenProcessID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Attack process frozen" };
+event kp1_m = { 1, nullptr, { {L"ImageName", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"ProcessID", {operation::Type::ANY}, 0}}, L"START --- Attack process started", L"ProcessID", AddOutputFormat::DEC};
+event kp1_s = { 1, nullptr, { {L"ParentProcessID", {operation::Type::IN_LIST}, &g_attack_pids}, {L"ProcessID", {operation::Type::ANY}, 0} }, L"START --- Sub-process started", L"ProcessID", AddOutputFormat::DEC };
+event kp2_m = { 2, nullptr, { {L"ProcessID", {operation::Type::FIRST_IN_LIST}, &g_attack_pids} }, L"STOP --- Attack process stopped", L"ProcessID", AddOutputFormat::DEC };
+event kp2_s = { 2, nullptr, { {L"ProcessID", {operation::Type::NFIRST_IN_LIST}, &g_attack_pids} }, L"STOP --- Sub-process stopped", L"ProcessID", AddOutputFormat::DEC };
+event kp3 = { 3, nullptr, { {L"ProcessID", {operation::Type::IN_LIST}, &g_attack_pids} }, L"Attack process started a thread" };
+event kp4 = { 4, nullptr, { {L"ProcessID", {operation::Type::IN_LIST}, &g_attack_pids} }, L"Attack process stopped a thread" };
+event kp5 = { 5, nullptr, { {L"ProcessID", {operation::Type::IN_LIST}, &g_attack_pids} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process loaded an image", L"ImageName", AddOutputFormat::STR };
+event kp6 = { 6, nullptr, { {L"ProcessID", {operation::Type::IN_LIST}, &g_attack_pids} , {L"ImageName", {operation::Type::ANY}, 0 } }, L"Attack process unloaded an image", L"ImageName", AddOutputFormat::STR };
+event kp11 = { 11, nullptr, { {L"FrozenProcessID", {operation::Type::IN_LIST}, &g_attack_pids} }, L"Attack process frozen" };
 provider kernel_process_provider = {
 	KERNEL_PROCESS_PROVIDER,
     kernel_process_provider_name,
     {
-        { kp1, kp2, kp11 },
-        { kp1, kp2, kp3, kp4, kp5, kp6, kp11 },
-        { kp1, kp2, kp3, kp4, kp5, kp6, kp11 }
+        { kp1_m, kp1_s, kp2_m, kp2_s, kp11 },
+        { kp1_m, kp1_s, kp2_m, kp2_s, kp3, kp4, kp5, kp6, kp11 },
+        { kp1_m, kp1_s, kp2_m, kp2_s, kp3, kp4, kp5, kp6, kp11 }
     }
 };
 
@@ -51,12 +56,12 @@ provider kernel_process_provider = {
 */
 event kf10 = { 10, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (name) created" };
 event kf11 = { 11, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Attack file (disposition) deleted" };
-event kf26 = { 26, nullptr, { {L"FilePath", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"DELETE --- Attack file deleted", };
+event kf26 = { 26, nullptr, { {L"FilePath", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"DELETE --- Attack file deleted", L"FilePath", AddOutputFormat::STR };
 event kf26_any = { 26, nullptr, { {L"FilePath", {operation::Type::ANY}, 0} }, L"Deleted", L"FilePath" };
-event kf30 = { 30, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created" };
-event kf30_def_detected = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_detection_store} }, L"Defender detection file created", L"FileName" };
-event kf30_def_scanned = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_scan_store} }, L"Defender scan file created", L"FileName" };
-event kf30_def_quarantine = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_quarantine} }, L"Defender detection file created", L"FileName" };
+event kf30 = { 30, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"STORED --- Attack file created", L"FileName", AddOutputFormat::STR };
+event kf30_def_detected = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_detection_store} }, L"Defender detection file created", L"FileName", AddOutputFormat::STR };
+event kf30_def_scanned = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_scan_store} }, L"Defender scan file created", L"FileName", AddOutputFormat::STR };
+event kf30_def_quarantine = { 30, nullptr, { {L"FileName", {operation::Type::CONTAINS_STR}, &def_quarantine} }, L"Defender detection file created", L"FileName", AddOutputFormat::STR };
 event kf30_any = { 30, nullptr, { {L"FileName", {operation::Type::ANY}, 0} }, L"Created", L"FileName" };
 provider kernel_file_provider = {
 	KERNEL_FILE_PROVIDER,
@@ -109,7 +114,7 @@ provider kernel_network_provider = {
 */
 event ka3 = { 3, nullptr, { {L"LinkSourceName", {operation::Type::EQUALS}, &g_attack_path} } };
 event ka4 = { 4, nullptr, { { } } };
-event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::EQUALS}, &g_attack_pids}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x10} }, MsMpEng + L" opened attack process with read access:",  L"DesiredAccess" };
+event ka5 = { 5, &g_edr_pid, { {L"TargetProcessId", {operation::Type::IN_LIST}, &g_attack_pids}, {L"DesiredAccess", {operation::Type::CONTAINS_FLAG}, 0x10} }, MsMpEng + L" opened attack process with read access", L"TargetProcessId", AddOutputFormat::DEC }; //  L"DesiredAccess", AddOutputFormat::HEX // TODO implement multiple output fields?
 event ka6 = { 6, nullptr, { {L"ThreadId", {operation::Type::EQUALS}, g_attack_main_tid} } };
 provider kernel_api_provider = {
     KERNEL_AUDIT_API_PROVIDER,
@@ -126,20 +131,20 @@ provider kernel_api_provider = {
 */
 // minimal
 event am1path = { 1, nullptr, { {L"First Resource Path", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Emulation of attack file started" };
-event am1proc = { 1, nullptr, { {L"First Resource Path", {operation::Type::PID_STR_EQUALS}, &g_attack_pids} }, L"Emulation of attack proc started" }; // should match "pid:1234"
-event am5 = { 5, nullptr, { {L"PID", {operation::Type::EQUALS}, &g_attack_pids} }, L"Heuristic scan of attack file started" };
-event am7 = { 7, nullptr, { {L"Path", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Heuristic scan of attack file skipped" };
+event am1proc = { 1, nullptr, { {L"First Resource Path", {operation::Type::PID_STR_EQUALS}, &g_attack_pids} }, L"Emulation of attack proc started", L"First Resource Path" }; // should match "pid:1234" // TODO with list support
+event am5 = { 5, nullptr, { {L"PID", {operation::Type::IN_LIST}, &g_attack_pids}, {L"Path", {operation::Type::ANY}, &any_match} }, L"Heuristic scan of attack file started", L"Path", AddOutputFormat::STR }; // contains both the PID and the corresponding imagename (path), match by pid and output path
+event am7 = { 7, nullptr, { {L"Path", {operation::Type::PATH_EQUALS}, &g_attack_path} }, L"Heuristic scan of attack file skipped", L"Path", AddOutputFormat::STR };
 event am43sig = { 43, nullptr, { {L"Name", {operation::Type::PATH_EQUALS}, &g_attack_path} , {L"Message", {operation::Type::EQUALS}, &c_get_hashes} }, L"Get hashes of attack file" };
 event am43spy = { 43, nullptr, { {L"Name", {operation::Type::PATH_EQUALS}, &g_attack_path} , {L"Message", {operation::Type::EQUALS}, &c_build_report} }, L"Submit scan report" };
 
 // relevant
 event am30 = { 30, nullptr, { {L"FilePath", {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack file ( ? ) started" };
 event am32 = { 32, nullptr, { {L"FilePath", {operation::Type::EQUALS}, &g_attack_path} }, L"UFS emulation of attack proc (loaded modules scan) started" };
-event am35 = { 35, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0}}, L"Add (part of) attack to MOAC cache", L"Result"};
-event am36 = { 36, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0} }, L"Lookup (part of) attack in MOAC cache", L"Result"};
-event am37 = { 37, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0} }, L"Revoke (part of) attack from MOAC cache", L"Result"};
-event am38 = { 38, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"CacheName", {operation::Type::EQUALS}, &c_usn_cache_name}, {L"Result", {operation::Type::ANY}, 0}}, L"Lookup (part of) attack in USN Cache", L"Result"};
-event am39 = { 39, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"CacheName", {operation::Type::EQUALS}, &c_usn_cache_name}, {L"Result", {operation::Type::ANY}, 0} }, L"Lookup (part of) attack in ", L"Result" };
+event am35 = { 35, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0} }, L"Add (part of) attack to MOAC cache", L"Result", AddOutputFormat::HEX };
+event am36 = { 36, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0} }, L"Lookup (part of) attack in MOAC cache", L"Result", AddOutputFormat::HEX };
+event am37 = { 37, nullptr, { {L"ScanSource", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"Result", {operation::Type::ANY}, 0} }, L"Revoke (part of) attack from MOAC cache", L"Result", AddOutputFormat::HEX };
+event am38 = { 38, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"CacheName", {operation::Type::EQUALS}, &c_usn_cache_name}, {L"Result", {operation::Type::ANY}, 0}}, L"Lookup (part of) attack in USN Cache", L"Result", AddOutputFormat::HEX };
+event am39 = { 39, nullptr, { {L"FileName", {operation::Type::PATH_EQUALS}, &g_attack_path}, {L"CacheName", {operation::Type::EQUALS}, &c_usn_cache_name}, {L"Result", {operation::Type::ANY}, 0} }, L"Lookup (part of) attack in ", L"Result", AddOutputFormat::HEX };
 
 // all
 event am2 = { 2, nullptr, {  } };
