@@ -1,5 +1,5 @@
 # iEDR
-> *better maldev & more insights into MDE*
+> *better maldev when tracking the actions of MsMpEng.exe*
 
 ## How to run it
 ```powershell
