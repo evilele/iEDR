@@ -19,7 +19,7 @@ bool keep_running = true;
 
 verbosity_level g_level = MINIMAL;
 
-std::wstring g_attack_path;
+std::wstring g_attack_path; // TODO track sub-process imagepaths?
 std::vector<int> g_attack_pids = {};
 int g_edr_pid = 0; // TODO add MsSense
 int g_attack_main_tid = 0;
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         else {
-            std::wcout << L"[+] Tracking EDR actions against attack: " << g_attack_path << L"\n";
+            std::wcout << L"[+] Tracking EDR actions against: " << g_attack_path << L"\n";
         }
     }
 
@@ -163,7 +163,7 @@ int main(int argc, char* argv[]) {
 
         Sleep(1000); // wait for all traces
         std::wcout << L"[+] Enter STOP (exit) or RESET (generate a report and continue)\n";
-        std::wcout << L"[+] Traces ready, store attack at " << g_attack_path << L"\n";
+        std::wcout << L"[+] Traces are ready now store|execute: " << g_attack_path << L"\n";
 
         std::string input;
         while (keep_running) { // set in catch_ctrl_c()
