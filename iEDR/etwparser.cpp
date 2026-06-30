@@ -21,7 +21,7 @@ void track_process_start(int id, const krabs::schema& schema) {
             bool is_main_attack_proc = false;
             bool is_child_proc = false;
 
-            std::wstring image_name = parser.parse<std::wstring>(L"ImageName");
+            std::wstring image_name = parser.parse<std::wstring>(L"ImageName"); // TODO track sub-process imagepaths?
             int ppid = parser.parse<int>(L"ParentProcessID");
             auto it = std::find(g_attack_pids.begin(), g_attack_pids.end(), ppid);
 
@@ -80,7 +80,6 @@ void track_process_start(int id, const krabs::schema& schema) {
     }
 }
 
-// TODO: correct here?
 void track_process_stop(int id, const krabs::schema& schema) {
 
     // check if the event marks the end of the attack -> reset attack PID (and path) to be able to detect next attack
@@ -180,7 +179,10 @@ void track_file(int id, const krabs::schema& schema) {
     }
 }
 
-void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
+void event_callback(const EVENT_RECORD& record, const krabs::trace_context& trace_context) {
+    g_trace_started = true;
+
+    krabs::schema schema(record, trace_context.schema_locator);
     std::wstring provider_name = schema.provider_name();
     int id = schema.event_id();
 
@@ -240,10 +242,10 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
 
                 try {
                     // get property of given event filter
-                    const krabs::property* prop  = nullptr;
+                    const krabs::property* prop = nullptr;
                     for (const auto& p : parser.properties()) {
                         if (p.name() == f.field_name) {
-							type = p.type();
+                            type = p.type();
                             break;
                         }
                     }
@@ -254,13 +256,13 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                         }
                         current_match = false;
                         break; // field not found, mark filter as failed and skip to next filter
-					}
+                    }
 
                     switch (type) {
                     case TDH_INTYPE_UINT16: {
                         uint16_t val = parser.parse<uint16_t>(f.field_name);
                         current_match = f.matches(val);
-						last_int = (int)val;
+                        last_int = (int)val;
                         break;
                     }
                     case TDH_INTYPE_UINT32:
@@ -273,45 +275,60 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                     case TDH_INTYPE_UNICODESTRING: {
                         std::wstring val = parser.parse<std::wstring>(f.field_name);
                         current_match = f.matches(val);
-						last_wstr = val;
+                        last_wstr = val;
                         break;
                     }
                     case TDH_INTYPE_ANSISTRING: {
                         std::string val = parser.parse<std::string>(f.field_name);
                         current_match = f.matches(std::wstring(val.begin(), val.end()));
-						last_wstr = std::wstring(val.begin(), val.end());
+                        last_wstr = std::wstring(val.begin(), val.end());
                         break;
                     }
                     case TDH_INTYPE_POINTER:
                     case TDH_INTYPE_SIZET: {
                         uint64_t val = parser.parse<uint64_t>(f.field_name);
                         current_match = f.matches((int)val);
-						last_int = (int)val;
+                        last_int = (int)val;
                         break;
                     }
                     default:
                         current_match = false;
-						std::wcout << L"[!] Unsupported TDH field type " << type << L" for field '"
+                        std::wcout << L"[!] Unsupported TDH field type " << type << L" for field '"
                             << f.field_name << L"' in EventID " << provider_name << L" - " << id << L"\n";
                         break;
                     }
 
-                    // if this is the field we also want to output for matched events, store the output value for later
-                    if (current_match && e.add_output_field == f.field_name) {
-                        add_field_output = L" " + f.field_name + L"=";
-                        if (e.add_output_format == AddOutputFormat::STR || type == TDH_INTYPE_UNICODESTRING || type == TDH_INTYPE_ANSISTRING) {
-                            add_field_output += last_wstr;
-                        }
-                        else {
-                            // convert last_int
-                            std::wstringstream wss;
-                            if (e.add_output_format == AddOutputFormat::HEX) {
-                                wss << L"0x" << std::hex; // to hex
+                    // check if it matches and field values should be output
+                    if (current_match && f.output_field_format != FieldOutputFormat::NO) { // "!= NO" is superflous, as long as NO = 0, but gl when this changes and this breaks -> leave "!= NO" in
+                        add_field_output += L" " + f.field_name + L"=";
+
+                        switch (f.output_field_format) {
+                        case FieldOutputFormat::STR:
+                        {
+                            if (type == TDH_INTYPE_UNICODESTRING || type == TDH_INTYPE_ANSISTRING) {
+                                add_field_output += last_wstr;
                             }
-                            wss << last_int; // or just dec (implicit)
-							add_field_output += wss.str();
+                            else {
+                                add_field_output += L"<unknown format of value>";
+                            }
+                            break;
                         }
-					}
+                        case FieldOutputFormat::HEX:
+                        {
+                            wchar_t buf[20]; //"0x" + max 16hex + '\0' -> 19, cpu likes 20 more than 19 says Gemini?
+                            int len = std::swprintf(buf, sizeof(buf) / sizeof(wchar_t), L"0x%X", last_int);
+                            if (len > 0) { // swprintf returns -1 for error? magic
+                                add_field_output.append(buf, len);
+                            }
+                            break;
+                        }
+                        case FieldOutputFormat::DEC:
+                            add_field_output += std::to_wstring(last_int);
+                            break;
+                        default:
+                            break;
+                        }
+                    }
                 }
                 catch (const std::exception& e) {
                     if (g_dev_debug) {
@@ -355,25 +372,23 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
                 std::wcout << timestamp_to_wstring(schema.timestamp()) << ": ";
 
                 // if no specific output defined for this event, output generic info
-                if (e.output.empty()) { 
+                if (e.output_msg.empty()) { 
                     std::wcout << id << L"." << schema.task_name() << "." << schema.opcode_name() << L" from " << provider_name << L" (no interpretation defined for event)";
                 }
                 else { // output defined interpretation
-                    std::wcout << e.output;
+                    std::wcout << e.output_msg;
                 }
-                if (!e.add_output_field.empty()) { // if specific output field defined, output the value of that field as well
-                    if (!add_field_output.empty()) {
-                        std::wcout << add_field_output;
-                    }
-                    else if (g_dev_debug) {
-                        std::wcout << L" [!] Output field '" << e.add_output_field << L"' defined but value could not be parsed";
-					}
-				}
+
+                // if additional output defined, output it also
+                if (!add_field_output.empty()) { 
+                    std::wcout << add_field_output;
+                }
 
 				// and output more debug info
                 if (g_dev_debug) { 
                     std::wcout << L" - " << provider_name << L" - " << id;
                 }
+
 				std::wcout << L"\n";
             }
 		}
@@ -388,10 +403,4 @@ void parse_etw_event(const EVENT_RECORD& record, const krabs::schema& schema) {
     if (provider_name == kernel_process_provider_name) {
         track_process_stop(id, schema);
     }
-}
-
-// hand over schema for parsing
-void event_callback(const EVENT_RECORD& record, const krabs::trace_context& trace_context) {
-    g_trace_started = true;
-    parse_etw_event(record, krabs::schema(record, trace_context.schema_locator));
 }
