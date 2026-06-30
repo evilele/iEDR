@@ -53,10 +53,16 @@ static const GUID ANTIMALWARE_ENGINE_PROVIDER =
     {0xb3, 0xb6, 0x96, 0xd8, 0xdf, 0x86, 0x8d, 0x99}
 };
 
-
-struct operation {
-    enum class Type { EQUALS, PATH_EQUALS, PID_STR_EQUALS, CONTAINS_STR, CONTAINS_FLAG, IN_LIST, FIRST_IN_LIST, NFIRST_IN_LIST, ANY };
-    const Type type;
+enum operation {
+    EQUALS, 
+    PATH_EQUALS, 
+    PID_STR_EQUALS, 
+    CONTAINS_STR, 
+    CONTAINS_FLAG, 
+    IN_LIST, 
+    FIRST_IN_LIST, 
+    NFIRST_IN_LIST, 
+    ANY
 };
 
 struct FilterValue {
@@ -73,46 +79,54 @@ struct FilterValue {
     FilterValue(const std::wstring* v) : filter_type(WSTR_FILTER), s_ptr(v) {}
 
     // Checks if an integer matches based on a specific operation type
-    bool match_int(int actual_int, operation::Type op_type) const {
+    bool match_int(int actual_int, operation op) const {
         if (filter_type == CONST_FILTER) {
             if (i_val == 0) return true; // Bypass
 
-            switch (op_type) {
-            case operation::Type::EQUALS:
+            switch (op) {
+            case EQUALS:
                 return actual_int == i_val;
-            case operation::Type::CONTAINS_FLAG:
+            case CONTAINS_FLAG:
                 return (actual_int & i_val) != 0;
-            case operation::Type::PID_STR_EQUALS: {
+            case PID_STR_EQUALS: 
+            {
                 std::wstring expected_str = L"pid:" + std::to_wstring(i_val);
                 return std::to_wstring(actual_int) == expected_str;
             }
-            case operation::Type::ANY:
+            case ANY:
                 return true;
             default:
                 return false;
             }
         }
 
-        if (filter_type == INT_VECTOR_FILTER && v_ptr) {
-            switch (op_type) {
-                case operation::Type::ANY:
+        else if (filter_type == INT_VECTOR_FILTER && v_ptr) {
+            switch (op) {
+                case ANY:
                     return true;
-                case operation::Type::IN_LIST: 
+                case IN_LIST: 
                 {
                     if (v_ptr->empty()) return false; // operation defined but no list to compare against -> always false
                     return std::find(v_ptr->begin(), v_ptr->end(), actual_int) != v_ptr->end();
                 }
-                case operation::Type::FIRST_IN_LIST: 
+                case FIRST_IN_LIST: 
                 {
                     if (v_ptr->empty()) return false;
                     return actual_int == v_ptr->at(0);
                 }
-                case operation::Type::NFIRST_IN_LIST:
+                case NFIRST_IN_LIST:
                 {
                     if (v_ptr->empty()) return false;
                     return std::find(v_ptr->begin() + 1, v_ptr->end(), actual_int) != v_ptr->end();
                 }
-                                                   
+                case PID_STR_EQUALS: 
+                {
+                    if (v_ptr->empty()) return false;
+                    std::wstring expected_str = L"pid:" + std::to_wstring(v_ptr->at(0));
+                    return std::to_wstring(actual_int) == expected_str;
+                }
+                default: 
+                    return false;
             }
         }
 
@@ -120,16 +134,16 @@ struct FilterValue {
     }
 
     // Checks if a string matches based on a specific operation type
-    bool match_str(const std::wstring& actual_str, operation::Type op_type) const {
+    bool match_str(const std::wstring& actual_str, operation op) const {
         if (filter_type == WSTR_FILTER && s_ptr) {
-            switch (op_type) {
-            case operation::Type::EQUALS:
+            switch (op) {
+            case EQUALS:
                 return actual_str == *s_ptr;
-            case operation::Type::PATH_EQUALS:
+            case PATH_EQUALS:
                 return filepath_match(actual_str, *s_ptr);
-            case operation::Type::CONTAINS_STR:
+            case CONTAINS_STR:
                 return actual_str.find(*s_ptr) != std::wstring::npos;
-            case operation::Type::ANY:
+            case ANY:
                 return true;
             default:
                 return false;
@@ -139,36 +153,33 @@ struct FilterValue {
     }
 };
 
-struct filter {
-    const std::wstring field_name;
-    const operation op;
-    const FilterValue expected;
-
-    bool matches(int actual_int) const {
-        return expected.match_int(actual_int, op.type);
-    }
-
-    bool matches(const std::wstring& actual_str) const {
-        return expected.match_str(actual_str, op.type);
-    }
-};
-
-enum AddOutputFormat {
+enum FieldOutputFormat {
+    NO,
     DEC,
     HEX,
     STR
 };
 
-// refactor (problem): 1 output maps to n filters, 1..n filters may contain interesting information to print (add_output)
-// --> add_output should be a list containing {field, format, add_text} and output += add_output_1, ..., add_output_n
-// also maybe translate pid in output to exe_name?
+struct filter {
+    FieldOutputFormat output_field_format; // if the actual value of the field should be printed, and in which format
+    const operation op;
+    const FilterValue expected;
+    const std::wstring field_name;
+
+    bool matches(int actual_int) const {
+        return expected.match_int(actual_int, op);
+    }
+
+    bool matches(const std::wstring& actual_str) const {
+        return expected.match_str(actual_str, op);
+    }
+};
+
 struct event {
     const int id;
-    const int* originating_pid; // optional originating PID filter // TODO this is only used for ka5, relevant? refactor?
-    const std::vector<filter> filters; // field filters// TODO refactor so that fields must not be in <>filters?
-    const std::wstring output;
-	const std::wstring add_output_field; // optional output from field value, field must also be in filters but can also be ANY (not filtered) // TODO above
-    const AddOutputFormat add_output_format;
+    const int* originating_pid; // optional originating PID filter
+    const std::vector<filter> filters; // field filters
+    const std::wstring output_msg;
 };
 
 struct events {
